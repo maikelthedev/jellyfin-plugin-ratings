@@ -10159,6 +10159,7 @@ body.ratings-no-card-overlay .netflix-card.has-rating::after {
    from Jellyfin's own padded-left / sectionTitle-cards classes, so only the local bits are set
    here. */
 .ratings-community-home .ratings-community-home-open {
+    display: inline-block;
     padding: 6px 14px;
     border: 0;
     border-radius: 999px;
@@ -10166,6 +10167,8 @@ body.ratings-no-card-overlay .netflix-card.has-rating::after {
     color: #0b0f12;
     font-size: 13px;
     font-weight: 600;
+    line-height: 1;
+    text-decoration: none;
     cursor: pointer;
 }
 .ratings-community-home-stats {

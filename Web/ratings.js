@@ -3546,6 +3546,11 @@
          */
         showProfilePage: function (userId, isBack) {
             var self = this;
+
+            // Leave the address of this profile in the URL, so it can be copied straight out of the
+            // address bar instead of only being reachable by clicking.
+            self.reflectUrlParam('profile', userId);
+
             self.injectProfileRedesignStyles();
             var existing = document.getElementById('socialProfilePage');
             if (existing) {
@@ -8708,6 +8713,9 @@
             document.body.appendChild(page);
             self._communityOpen = true;
 
+            // Same reason as the profile: the address bar has to carry the link that opens this.
+            self.reflectUrlParam('community', '1');
+
             // Same scroll lock the profile overlay uses.
             self._prevBodyOverflow = document.body.style.overflow;
             self._prevHtmlOverflow = document.documentElement.style.overflow;
@@ -8937,13 +8945,13 @@
             link.innerHTML = '<span class="material-icons navMenuOptionIcon" aria-hidden="true">people</span>' +
                 '<span class="navMenuOptionText">' + self.escapeHtml(self.t('community')) + '</span>';
 
-            // Open in place; the href above still serves middle-click and open-in-new-tab.
-            link.addEventListener('click', function (e) {
-                e.preventDefault();
-                if (document.querySelector('#social-friends-panel.open')) {
-                    document.querySelector('#social-friends-panel').classList.remove('open');
+            // Let the href do the navigating: that is what puts ?community=1 in the address bar for
+            // a human to copy. preventDefault() here would open the page with no address at all.
+            link.addEventListener('click', function () {
+                var panel = document.getElementById('social-friends-panel');
+                if (panel) {
+                    panel.classList.remove('open');
                 }
-                self.showCommunityPage();
             });
 
             var signOut = block.querySelector('.btnLogout');
@@ -8984,12 +8992,11 @@
             card.innerHTML =
                 '<div class="sectionTitleContainer sectionTitleContainer-cards">' +
                     '<h2 class="sectionTitle sectionTitle-cards padded-left">' + self.escapeHtml(self.t('community')) + '</h2>' +
-                    '<button type="button" class="sectionTitleButton ratings-community-home-open">' + self.escapeHtml(self.t('communityOpen')) + '</button>' +
+                    // A real anchor, not a button: its href is the link a human copies, and it still
+                    // works with middle-click and open-in-new-tab.
+                    '<a class="sectionTitleButton ratings-community-home-open" href="#/home?community=1">' + self.escapeHtml(self.t('communityOpen')) + '</a>' +
                 '</div>' +
                 '<div class="ratings-community-home-stats padded-left padded-right" id="ratingsCommunityHomeStats"></div>';
-            card.querySelector('.ratings-community-home-open').addEventListener('click', function () {
-                self.showCommunityPage();
-            });
 
             container.insertBefore(card, container.firstChild);
 
@@ -9348,6 +9355,34 @@
             }
 
             return null;
+        },
+
+        /**
+         * Put a parameter into the current URL, in place, so the address bar always holds the link
+         * a human would copy.
+         *
+         * Uses replaceState, so this leaves no history entry: the overlay is not a navigation, but
+         * its address has to be there to copy. The parameter goes into the hash, where Jellyfin
+         * routes, and an existing value for the same name is replaced rather than appended.
+         *
+         * @param {string} name Parameter name.
+         * @param {string} value Value to set.
+         */
+        reflectUrlParam: function (name, value) {
+            try {
+                var url = new URL(window.location.href);
+                var hash = url.hash || '#/home';
+                var encoded = encodeURIComponent(value);
+                if (new RegExp('([?&])' + name + '=').test(hash)) {
+                    hash = hash.replace(new RegExp('([?&])' + name + '=[^&]*'), '$1' + name + '=' + encoded);
+                } else {
+                    hash += (hash.indexOf('?') === -1 ? '?' : '&') + name + '=' + encoded;
+                }
+                url.hash = hash;
+                window.history.replaceState(window.history.state, '', url.pathname + url.search + url.hash);
+            } catch (e) {
+                // A URL that cannot be parsed is not worth breaking the open over.
+            }
         },
 
         /**
