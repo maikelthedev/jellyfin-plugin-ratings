@@ -10155,9 +10155,10 @@ body.ratings-no-card-overlay .netflix-card.has-rating::after {
     font-style: italic;
 }
 
-/* Community card at the top of the home page */
+/* Community card at the top of the home page. The horizontal padding and the title size come
+   from Jellyfin's own padded-left / sectionTitle-cards classes, so only the local bits are set
+   here. */
 .ratings-community-home .ratings-community-home-open {
-    margin-left: 12px;
     padding: 6px 14px;
     border: 0;
     border-radius: 999px;
@@ -10171,7 +10172,8 @@ body.ratings-no-card-overlay .netflix-card.has-rating::after {
     display: flex;
     flex-wrap: wrap;
     gap: 18px;
-    padding: 4px 0 10px;
+    padding-top: 4px;
+    padding-bottom: 12px;
     color: #9ab;
     font-size: 14px;
 }

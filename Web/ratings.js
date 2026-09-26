@@ -8641,6 +8641,11 @@
                 return;
             }
 
+            // This page reuses the profile's Letterboxd styling, and those rules are injected on
+            // demand by showProfilePage(). Without this the poster grid and the two-column layout
+            // simply do not exist, because none of them live in the stylesheet.
+            self.injectProfileRedesignStyles();
+
             var page = document.createElement('div');
             page.id = 'communityPage';
             page.className = 'social-profile-page letterboxd-style';
@@ -8747,9 +8752,7 @@
                 var cards = [
                     [stats.TotalRatings, self.t('ratings')],
                     [stats.TotalReviews, self.t('reviews')],
-                    [stats.TotalUsers, self.t('members')],
-                    [stats.TotalItems, self.t('titles')],
-                    [stats.AverageRating ? Number(stats.AverageRating).toFixed(1) : '0', self.t('avgLabel')]
+                    [stats.TotalItems, self.t('titles')]
                 ];
                 el.innerHTML = cards.map(function (card) {
                     return '<div class="lb-stat">' +
@@ -8975,12 +8978,15 @@
             var card = document.createElement('div');
             card.className = 'verticalSection ratings-community-home';
             card.id = 'ratingsCommunityHomeCard';
+            // Exactly the markup Jellyfin uses for its own home rows: the horizontal padding sits
+            // on the title and on the content, not on the wrapper, and the title carries the
+            // card variant that gives it the right size.
             card.innerHTML =
-                '<div class="sectionTitleContainer flex align-items-center">' +
-                    '<h2 class="sectionTitle">' + self.escapeHtml(self.t('community')) + '</h2>' +
-                    '<button type="button" class="ratings-community-home-open">' + self.escapeHtml(self.t('communityOpen')) + '</button>' +
+                '<div class="sectionTitleContainer sectionTitleContainer-cards">' +
+                    '<h2 class="sectionTitle sectionTitle-cards padded-left">' + self.escapeHtml(self.t('community')) + '</h2>' +
+                    '<button type="button" class="sectionTitleButton ratings-community-home-open">' + self.escapeHtml(self.t('communityOpen')) + '</button>' +
                 '</div>' +
-                '<div class="ratings-community-home-stats" id="ratingsCommunityHomeStats"></div>';
+                '<div class="ratings-community-home-stats padded-left padded-right" id="ratingsCommunityHomeStats"></div>';
             card.querySelector('.ratings-community-home-open').addEventListener('click', function () {
                 self.showCommunityPage();
             });
@@ -8993,9 +8999,7 @@
                 var facts = [
                     [stats.TotalRatings, self.t('ratings')],
                     [stats.TotalReviews, self.t('reviews')],
-                    [stats.TotalUsers, self.t('members')],
-                    [stats.TotalItems, self.t('titles')],
-                    [stats.AverageRating ? Number(stats.AverageRating).toFixed(1) : '0', self.t('avgLabel')]
+                    [stats.TotalItems, self.t('titles')]
                 ];
                 target.innerHTML = facts.map(function (fact) {
                     return '<span class="ratings-community-home-stat"><strong>' +
@@ -9022,6 +9026,7 @@
             }
             self._communityInitialised = true;
 
+            var pending = null;
             var refresh = function () {
                 try {
                     self.injectCommunitySidebarLink();
@@ -9031,10 +9036,39 @@
                 }
             };
 
+            // Both targets are built by assigning innerHTML, so anything injected into them is
+            // wiped by the next render - Jellyfin rebuilds the sidebar block every time the drawer
+            // is drawn, and re-renders the home rows constantly. Watching for the containers is
+            // what makes the entries stick; the interval is only a fallback for a render that
+            // adds no matching node at all.
+            var schedule = function () {
+                if (pending) {
+                    clearTimeout(pending);
+                }
+                pending = setTimeout(refresh, 150);
+            };
+
+            new MutationObserver(function (mutations) {
+                for (var i = 0; i < mutations.length; i++) {
+                    var added = mutations[i].addedNodes;
+                    for (var j = 0; j < added.length; j++) {
+                        var node = added[j];
+                        if (node.nodeType !== 1) {
+                            continue;
+                        }
+                        if ((node.classList && (node.classList.contains('userMenuOptions') || node.classList.contains('homeSectionsContainer'))) ||
+                            (node.querySelector && node.querySelector('.userMenuOptions, .homeSectionsContainer'))) {
+                            schedule();
+                            return;
+                        }
+                    }
+                }
+            }).observe(document.body, { childList: true, subtree: true });
+
             window.addEventListener('hashchange', function () {
                 setTimeout(refresh, 300);
             });
-            setInterval(refresh, 2000);
+            setInterval(refresh, 5000);
             setTimeout(refresh, 1500);
         },
 
