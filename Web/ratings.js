@@ -133,6 +133,7 @@
                 communityRating: 'Community Rating', createRow: 'Create Row',
                 community: 'Community', communitySubtitle: 'What everyone on this server has been rating',
                 communityOpen: 'Open Community', topRated: 'Top Rated', mostActiveUsers: 'Most Active Users',
+                latestCommented: 'Latest Commented',
                 ratingDistribution: 'Rating Distribution', members: 'Members', titles: 'Titles', refresh: 'Refresh',
                 defaultStyleApplied: 'Default style applied', deleteRow: 'Delete row', disagree: 'Disagree',
                 dismiss: 'Dismiss', editRating: 'Edit rating', emojis: 'Emojis',
@@ -8668,7 +8669,12 @@
                     '<div class="lb-profile-header">' +
                         '<div class="lb-header-content">' +
                             '<div class="lb-avatar">' +
+                                // A community has no user picture of its own, so it stands in the
+                                // server's login splashscreen when one is set. The people icon sits
+                                // behind it and shows through when there is none (the image hides
+                                // itself on a 404 through the delegated .plugin-img-fallback).
                                 '<svg viewBox="0 0 24 24" width="54" height="54" fill="currentColor"><path d="M16 11c1.66 0 2.99-1.34 2.99-3S17.66 5 16 5c-1.66 0-3 1.34-3 3s1.34 3 3 3zm-8 0c1.66 0 2.99-1.34 2.99-3S9.66 5 8 5C6.34 5 5 6.34 5 8s1.34 3 3 3zm0 2c-2.33 0-7 1.17-7 3.5V19h14v-2.5c0-2.33-4.67-3.5-7-3.5zm8 0c-.29 0-.62.02-.97.05 1.16.84 1.97 1.97 1.97 3.45V19h6v-2.5c0-2.33-4.67-3.5-7-3.5z"/></svg>' +
+                                '<img class="lb-avatar-img plugin-img-fallback" src="' + self.escapeHtml(ApiClient.serverAddress() + '/Branding/Splashscreen') + '" alt="" />' +
                             '</div>' +
                             '<div class="lb-user-info">' +
                                 '<h1 class="lb-username">' + self.escapeHtml(self.t('community')) + '</h1>' +
@@ -8680,6 +8686,10 @@
                     '<div class="lb-content">' +
                         '<div class="lb-overview lb-grid">' +
                             '<div class="lb-main">' +
+                                '<section class="lb-section lb-anim">' +
+                                    '<h3 class="lb-sec-title">' + self.escapeHtml(self.t('latestCommented')) + '</h3>' +
+                                    '<div class="ratings-community-comments" id="communityLatestCommented"></div>' +
+                                '</section>' +
                                 '<section class="lb-section lb-anim">' +
                                     '<h3 class="lb-sec-title">' + self.escapeHtml(self.t('topRated')) + '</h3>' +
                                     '<div class="lb-poster-strip" id="communityTopRated"></div>' +
@@ -8746,7 +8756,7 @@
             this.loadCommunityTopRated();
             this.loadCommunityMostActiveUsers();
             this.loadCommunityDistribution();
-            this.loadCommunityActivity();
+            this.loadCommunityFeed();
         },
 
         /** Server-wide totals. */
@@ -8875,47 +8885,154 @@
         },
 
         /**
-         * Everyone's latest ratings, with the review text.
+         * One fetch feeds both activity panels: "Latest commented" is the same feed filtered to the
+         * entries that carry review text.
          *
-         * The endpoint caps this at 100 entries and orders it by recency, so this is the recent
-         * end of the feed rather than everything ever rated.
+         * The endpoint caps this at 100 entries, orders it by recency, and truncates each review to
+         * 80 characters, so the full text is looked up from the per-user list - a handful of requests
+         * for up to five comments, not one per entry - and the truncated preview stands in when that
+         * lookup misses.
          */
-        loadCommunityActivity: function () {
+        loadCommunityFeed: function () {
+            var self = this;
+            if (!document.getElementById('communityActivity') && !document.getElementById('communityLatestCommented')) {
+                return;
+            }
+
+            self.communityFetch('/Ratings/RecentActivity?limit=100').then(function (activity) {
+                self._communityFeed = activity || [];
+                self.renderCommunityLatestCommented();
+                self.renderCommunityActivity();
+            }).catch(function () {
+                var comments = document.getElementById('communityLatestCommented');
+                if (comments) comments.innerHTML = '';
+                var feed = document.getElementById('communityActivity');
+                if (feed) feed.innerHTML = '';
+            });
+        },
+
+        /** The newest reviews, as poster + commenter avatar + the review itself. */
+        renderCommunityLatestCommented: function () {
+            var self = this;
+            var el = document.getElementById('communityLatestCommented');
+            if (!el) return;
+
+            var reviewed = (self._communityFeed || []).filter(function (entry) {
+                return entry.ReviewPreview || entry.reviewPreview;
+            }).slice(0, 5);
+
+            if (!reviewed.length) {
+                el.innerHTML = '<div class="lb-empty-mini">' + self.escapeHtml(self.t('noReviewsYet')) + '</div>';
+                return;
+            }
+
+            var baseUrl = ApiClient.serverAddress();
+            var userIds = [];
+            reviewed.forEach(function (entry) {
+                var userId = entry.UserId || entry.userId;
+                if (userId && userIds.indexOf(userId) === -1) {
+                    userIds.push(userId);
+                }
+            });
+
+            Promise.all(userIds.map(function (userId) {
+                return self.communityFetch('/Ratings/Users/' + encodeURIComponent(userId) + '/Ratings?limit=100')
+                    .catch(function () { return []; });
+            })).then(function (lists) {
+                var fullText = {};
+                lists.forEach(function (list) {
+                    (list || []).forEach(function (rating) {
+                        var itemId = (rating.ItemId || rating.itemId || '').toLowerCase();
+                        var userId = (rating.UserId || rating.userId || '').toLowerCase();
+                        var text = rating.ReviewText || rating.reviewText || '';
+                        if (itemId && text) {
+                            fullText[itemId + '|' + userId] = text;
+                        }
+                    });
+                });
+
+                if (!document.getElementById('communityLatestCommented')) return;
+
+                el.innerHTML = reviewed.map(function (entry) {
+                    var itemId = entry.ItemId || entry.itemId || '';
+                    var userId = entry.UserId || entry.userId || '';
+                    var userName = entry.UserName || entry.userName || 'Unknown';
+                    var itemName = entry.ItemName || entry.itemName || 'Unknown';
+                    var when = entry.Timestamp || entry.timestamp;
+                    var review = fullText[(itemId + '|' + userId).toLowerCase()] ||
+                        entry.ReviewPreview || entry.reviewPreview || '';
+
+                    var poster = itemId
+                        ? ' style="background-image:url(\'' + self.escapeHtml(baseUrl + '/Items/' + encodeURIComponent(itemId) + '/Images/Primary?maxHeight=180') + '\')"'
+                        : '';
+                    var avatar = userId
+                        ? self.escapeHtml(userName.charAt(0).toUpperCase()) +
+                          '<img class="ratings-community-comment-avatar-img plugin-img-fallback" src="' +
+                          self.escapeHtml(baseUrl + '/Users/' + encodeURIComponent(userId) + '/Images/Primary?height=60&quality=90') + '" alt="" />'
+                        : '';
+
+                    return '<div class="ratings-community-comment">' +
+                        '<div class="ratings-community-comment-poster"' + poster +
+                            (itemId ? ' onclick="RatingsPlugin.openMedia(\'' + self.escapeJs(itemId) + '\')" title="' + self.escapeHtml(itemName) + '"' : '') +
+                        '></div>' +
+                        '<div class="ratings-community-comment-body">' +
+                            '<div class="ratings-community-comment-head">' +
+                                '<span class="ratings-community-comment-avatar">' + avatar + '</span>' +
+                                (userId
+                                    ? '<strong class="ratings-community-comment-user" onclick="RatingsPlugin.showProfilePage(\'' + self.escapeJs(userId) + '\')">' + self.escapeHtml(userName) + '</strong>'
+                                    : '<strong class="ratings-community-comment-user">' + self.escapeHtml(userName) + '</strong>') +
+                                '<span class="ratings-community-comment-on">on</span>' +
+                                (itemId
+                                    ? '<strong class="ratings-community-comment-title" onclick="RatingsPlugin.openMedia(\'' + self.escapeJs(itemId) + '\')">' + self.escapeHtml(itemName) + '</strong>'
+                                    : '<strong>' + self.escapeHtml(itemName) + '</strong>') +
+                                self.renderStars(entry.Rating || entry.rating) +
+                                '<span class="ratings-community-comment-time">' + (when ? self.formatTimeAgo(new Date(when)) : '') + '</span>' +
+                            '</div>' +
+                            '<p class="ratings-community-comment-text">' + self.escapeHtml(review) + '</p>' +
+                        '</div>' +
+                        '</div>';
+                }).join('');
+            });
+        },
+
+        /**
+         * Everyone's latest ratings and reviews.
+         *
+         * Recent end of the feed rather than everything ever rated: the endpoint caps at 100 entries
+         * and orders by recency.
+         */
+        renderCommunityActivity: function () {
             var self = this;
             var el = document.getElementById('communityActivity');
             if (!el) return;
 
-            self.communityFetch('/Ratings/RecentActivity?limit=50').then(function (activity) {
-                if (!document.getElementById('communityActivity')) return;
-                if (!activity || !activity.length) {
-                    el.innerHTML = '<div class="lb-empty-mini">' + self.escapeHtml(self.t('noRatingsYet')) + '</div>';
-                    return;
-                }
-                el.innerHTML = activity.map(function (entry) {
-                    var itemId = entry.ItemId || entry.itemId || '';
-                    var itemName = entry.ItemName || entry.itemName || 'Unknown';
-                    var userId = entry.UserId || entry.userId || '';
-                    var userName = entry.UserName || entry.userName || 'Unknown';
-                    var review = entry.ReviewPreview || entry.reviewPreview || '';
-                    var title = itemId
-                        ? '<strong style="cursor:pointer" onclick="RatingsPlugin.openMedia(\'' + self.escapeJs(itemId) + '\')">' + self.escapeHtml(itemName) + '</strong>'
-                        : '<strong>' + self.escapeHtml(itemName) + '</strong>';
-                    var who = userId
-                        ? '<strong style="cursor:pointer" onclick="RatingsPlugin.showProfilePage(\'' + self.escapeJs(userId) + '\')">' + self.escapeHtml(userName) + '</strong>'
-                        : '<strong>' + self.escapeHtml(userName) + '</strong>';
-                    var when = entry.Timestamp || entry.timestamp;
-                    return '<div class="lb-activity-item">' +
-                        '<span class="lb-activity-type">' + (review ? '📝' : '⭐') + '</span>' +
-                        '<span class="lb-activity-text">' + who + ' ' +
-                            (review ? 'reviewed' : 'rated') + ' ' + title + ' ' + self.renderStars(entry.Rating || entry.rating) +
-                            (review ? '<br /><span class="lb-activity-review">' + self.escapeHtml(review) + '</span>' : '') +
-                        '</span>' +
-                        '<span class="lb-activity-time">' + (when ? self.formatTimeAgo(new Date(when)) : '') + '</span>' +
-                        '</div>';
-                }).join('');
-            }).catch(function () {
-                el.innerHTML = '';
-            });
+            var activity = self._communityFeed || [];
+            if (!activity.length) {
+                el.innerHTML = '<div class="lb-empty-mini">' + self.escapeHtml(self.t('noRatingsYet')) + '</div>';
+                return;
+            }
+
+            el.innerHTML = activity.slice(0, 50).map(function (entry) {
+                var itemId = entry.ItemId || entry.itemId || '';
+                var itemName = entry.ItemName || entry.itemName || 'Unknown';
+                var userId = entry.UserId || entry.userId || '';
+                var userName = entry.UserName || entry.userName || 'Unknown';
+                var review = entry.ReviewPreview || entry.reviewPreview || '';
+                var title = itemId
+                    ? '<strong style="cursor:pointer" onclick="RatingsPlugin.openMedia(\'' + self.escapeJs(itemId) + '\')">' + self.escapeHtml(itemName) + '</strong>'
+                    : '<strong>' + self.escapeHtml(itemName) + '</strong>';
+                var who = userId
+                    ? '<strong style="cursor:pointer" onclick="RatingsPlugin.showProfilePage(\'' + self.escapeJs(userId) + '\')">' + self.escapeHtml(userName) + '</strong>'
+                    : '<strong>' + self.escapeHtml(userName) + '</strong>';
+                var when = entry.Timestamp || entry.timestamp;
+                return '<div class="lb-activity-item">' +
+                    '<span class="lb-activity-type">' + (review ? '📝' : '⭐') + '</span>' +
+                    '<span class="lb-activity-text">' + who + ' ' +
+                        (review ? 'reviewed' : 'rated') + ' ' + title + ' ' + self.renderStars(entry.Rating || entry.rating) +
+                    '</span>' +
+                    '<span class="lb-activity-time">' + (when ? self.formatTimeAgo(new Date(when)) : '') + '</span>' +
+                    '</div>';
+            }).join('');
         },
 
         /**
@@ -11212,6 +11329,22 @@
                 commentBtn.setAttribute('data-action', 'comment');
                 commentBtn.innerHTML = '💬 <span class="comment-count">' + (Number(review.CommentCount) || 0) + '</span>';
                 actionsDiv.appendChild(commentBtn);
+
+                // The author gets the edit control on their own review, right here on the page.
+                // It used to exist only inside the "(view all)" list, so changing your own words
+                // meant knowing to open another surface and finding it there. Deliberately not the
+                // `own-review` class: that one is wired to the "rating your own review" gag.
+                if (isOwnReview) {
+                    var editOwnBtn = document.createElement('button');
+                    editOwnBtn.type = 'button';
+                    editOwnBtn.className = 'user-review-action-btn edit-own-review';
+                    editOwnBtn.title = self.t('editRating');
+                    editOwnBtn.textContent = 'Edit';
+                    editOwnBtn.addEventListener('click', function () {
+                        self.openRatingModal(itemId, Number(review.Rating) || self.currentUserRating || 0);
+                    });
+                    actionsDiv.appendChild(editOwnBtn);
+                }
 
                 // Admins can take down anyone's review. Users could only ever delete their own,
                 // which left no way to remove an abusive or spoiler review from the page.
