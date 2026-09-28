@@ -137,7 +137,7 @@ window.RatingsPluginI18n.de = {
             addNewRow: 'Neue Zeile', addToARow: 'Zu einer Zeile hinzufügen', agree: 'Zustimmen',
             allRatings: 'Alle Bewertungen', allowOthersToFollowMe: 'Anderen erlauben, mir zu folgen',
             background: 'Hintergrund', block: 'Blockieren', clickToView: 'Zum Ansehen klicken', close: 'Schließen',
-            comments: 'Kommentare', communityRating: 'Community-Bewertung', createRow: 'Zeile erstellen',
+            comments: 'Kommentare', communityRating: 'Community-Bewertung', mostCommented: 'Meist kommentiert', mostCommentedEmpty: 'Noch kein Titel hat Rezensionen von drei Personen', createRow: 'Zeile erstellen',
             defaultStyleApplied: 'Standardstil angewendet', deleteRow: 'Zeile löschen', disagree: 'Nicht zustimmen',
             dismiss: 'Verwerfen', editRating: 'Bewertung bearbeiten', emojis: 'Emojis',
             enterCustomTitle: 'Eigenen Titel eingeben...', enterUsername: 'Benutzernamen eingeben...',

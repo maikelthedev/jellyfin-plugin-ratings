@@ -128,7 +128,7 @@ window.RatingsPluginI18n.ko = {
             showsLabel: '시리즈', similarTaste: '비슷한 취향', statsTitle: '통계', taste: '취향',
             addNewRow: '행 추가', addToARow: '행에 추가', agree: '동의', allRatings: '모든 평점',
             allowOthersToFollowMe: '다른 사용자의 팔로우 허용', background: '배경', block: '차단', clickToView: '클릭하여 보기',
-            close: '닫기', comments: '댓글', communityRating: '커뮤니티 평점', createRow: '행 만들기',
+            close: '닫기', comments: '댓글', communityRating: '커뮤니티 평점', mostCommented: '가장 많이 댓글 달린', mostCommentedEmpty: '아직 세 명 이상의 리뷰가 있는 작품이 없습니다', createRow: '행 만들기',
             defaultStyleApplied: '기본 스타일 적용됨', deleteRow: '행 삭제', disagree: '동의하지 않음', dismiss: '무시',
             editRating: '평점 수정', emojis: '이모지', enterCustomTitle: '제목 입력...', enterUsername: '사용자 이름 입력...',
             filterUsers: '사용자 필터...', friend: '친구', genreBreakdownByWatchTime: '시청 시간별 장르 분포',

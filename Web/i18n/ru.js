@@ -139,7 +139,7 @@ window.RatingsPluginI18n.ru = {
             addNewRow: 'Добавить строку', addToARow: 'Добавить в строку', agree: 'Согласен', allRatings: 'Все оценки',
             allowOthersToFollowMe: 'Разрешить подписываться на меня', background: 'Фон', block: 'Заблокировать',
             clickToView: 'Нажмите, чтобы открыть', close: 'Закрыть', comments: 'Комментарии',
-            communityRating: 'Оценка сообщества', createRow: 'Создать строку',
+            communityRating: 'Оценка сообщества', mostCommented: 'Самые комментируемые', mostCommentedEmpty: 'Пока нет ни одного тайтла с рецензиями от трёх человек', createRow: 'Создать строку',
             defaultStyleApplied: 'Применён стиль по умолчанию', deleteRow: 'Удалить строку', disagree: 'Не согласен',
             dismiss: 'Скрыть', editRating: 'Изменить оценку', emojis: 'Эмодзи',
             enterCustomTitle: 'Введите название...', enterUsername: 'Введите имя пользователя...',

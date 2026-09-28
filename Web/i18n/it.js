@@ -140,7 +140,7 @@ window.RatingsPluginI18n.it = {
             addNewRow: 'Aggiungi riga', addToARow: 'Aggiungi a una riga', agree: 'D\'accordo',
             allRatings: 'Tutte le valutazioni', allowOthersToFollowMe: 'Consenti agli altri di seguirmi',
             background: 'Sfondo', block: 'Blocca', clickToView: 'Clicca per vedere', close: 'Chiudi',
-            comments: 'Commenti', communityRating: 'Valutazione della community', createRow: 'Crea riga',
+            comments: 'Commenti', communityRating: 'Valutazione della community', mostCommented: 'Più commentati', mostCommentedEmpty: 'Nessun titolo ha ancora recensioni da tre persone', createRow: 'Crea riga',
             defaultStyleApplied: 'Stile predefinito applicato', deleteRow: 'Elimina riga', disagree: 'Non d\'accordo',
             dismiss: 'Ignora', editRating: 'Modifica valutazione', emojis: 'Emoji',
             enterCustomTitle: 'Inserisci un titolo...', enterUsername: 'Inserisci un nome utente...',

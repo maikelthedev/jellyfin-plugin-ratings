@@ -6526,6 +6526,79 @@ namespace Jellyfin.Plugin.Ratings.Api
         }
 
         /// <summary>
+        /// Titles that several different people have actually written a review for, most
+        /// reviewed first. "Commented" means review TEXT, not a star rating - a title ten
+        /// people rated but nobody wrote about does not belong here.
+        /// </summary>
+        /// <param name="limit">Maximum number of items to return.</param>
+        /// <param name="minReviews">How many distinct reviewers a title needs to qualify.</param>
+        /// <returns>Most commented items, each with its review count.</returns>
+        [HttpGet("MostCommented")]
+        [Authorize]
+        public ActionResult GetMostCommented([FromQuery] int limit = 12, [FromQuery] int minReviews = 3)
+        {
+            try
+            {
+                limit = Math.Clamp(limit, 1, 50);
+                minReviews = Math.Clamp(minReviews, 2, 50);
+
+                // Distinct reviewers, not review rows: one account must count once however
+                // many times it edited its review.
+                var ranked = _repository.GetAllRatings()
+                    .Where(r => !string.IsNullOrWhiteSpace(r.ReviewText))
+                    .GroupBy(r => r.ItemId)
+                    .Select(g => new
+                    {
+                        ItemId = g.Key,
+                        ReviewCount = g.Select(r => r.UserId).Distinct().Count(),
+                        AverageRating = Math.Round(g.Average(r => r.Rating), 2),
+                        TotalRatings = g.Count(),
+                        LastReview = g.Max(r => r.UpdatedAt)
+                    })
+                    .Where(x => x.ReviewCount >= minReviews)
+                    .OrderByDescending(x => x.ReviewCount)
+                    .ThenByDescending(x => x.LastReview)
+                    .ToList();
+
+                // Filter by what this account may see BEFORE taking the page, so hiding a title
+                // shortens the list rather than leaving a gap in it.
+                var viewerId = User.GetUserId();
+                var result = new List<object>();
+                for (var offset = 0; offset < ranked.Count && result.Count < limit; offset += limit * 2)
+                {
+                    var window = ranked.GetRange(offset, Math.Min(limit * 2, ranked.Count - offset));
+                    var visible = VisibleItemIds(viewerId, window.Select(w => w.ItemId));
+                    foreach (var entry in window.Where(w => visible.Contains(w.ItemId)))
+                    {
+                        if (result.Count >= limit) break;
+                        var mediaItem = _libraryManager.GetItemById(entry.ItemId);
+                        if (mediaItem == null) continue;
+
+                        var hasImage = mediaItem.ImageInfos?.Any(i => i.Type == MediaBrowser.Model.Entities.ImageType.Primary) == true;
+
+                        result.Add(new
+                        {
+                            Id = entry.ItemId.ToString("N"),
+                            Name = mediaItem.Name,
+                            Year = mediaItem.ProductionYear,
+                            AverageRating = entry.AverageRating,
+                            TotalRatings = entry.TotalRatings,
+                            ReviewCount = entry.ReviewCount,
+                            ImageUrl = hasImage ? $"/Items/{entry.ItemId}/Images/Primary" : null
+                        });
+                    }
+                }
+
+                return Ok(result);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error getting most commented items");
+                return Ok(new List<object>());
+            }
+        }
+
+        /// <summary>
         /// Get most active users by rating count.
         /// </summary>
         /// <param name="limit">Maximum number of users to return.</param>

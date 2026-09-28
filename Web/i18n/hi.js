@@ -138,7 +138,7 @@ window.RatingsPluginI18n.hi = {
             addNewRow: 'नई पंक्ति जोड़ें', addToARow: 'पंक्ति में जोड़ें', agree: 'सहमत', allRatings: 'सभी रेटिंग',
             allowOthersToFollowMe: 'दूसरों को मुझे फ़ॉलो करने दें', background: 'पृष्ठभूमि', block: 'ब्लॉक करें',
             clickToView: 'देखने के लिए क्लिक करें', close: 'बंद करें', comments: 'टिप्पणियाँ',
-            communityRating: 'कम्युनिटी रेटिंग', createRow: 'पंक्ति बनाएँ',
+            communityRating: 'कम्युनिटी रेटिंग', mostCommented: 'सर्वाधिक टिप्पणी', mostCommentedEmpty: 'अभी तक किसी शीर्षक की तीन लोगों से समीक्षा नहीं है', createRow: 'पंक्ति बनाएँ',
             defaultStyleApplied: 'डिफ़ॉल्ट स्टाइल लागू', deleteRow: 'पंक्ति हटाएँ', disagree: 'असहमत',
             dismiss: 'खारिज करें', editRating: 'रेटिंग संपादित करें', emojis: 'इमोजी',
             enterCustomTitle: 'कस्टम शीर्षक दर्ज करें...', enterUsername: 'उपयोगकर्ता नाम दर्ज करें...',

@@ -129,7 +129,7 @@ window.RatingsPluginI18n.ja = {
             statsTitle: '統計', taste: '好み',
             addNewRow: '行を追加', addToARow: '行に追加', agree: '同意', allRatings: 'すべての評価',
             allowOthersToFollowMe: '他のユーザーのフォローを許可', background: '背景', block: 'ブロック', clickToView: 'クリックして表示',
-            close: '閉じる', comments: 'コメント', communityRating: 'コミュニティ評価', createRow: '行を作成',
+            close: '閉じる', comments: 'コメント', communityRating: 'コミュニティ評価', mostCommented: '最もコメントされた', mostCommentedEmpty: 'まだ3人以上のレビューがある作品はありません', createRow: '行を作成',
             defaultStyleApplied: '既定のスタイルを適用しました', deleteRow: '行を削除', disagree: '同意しない', dismiss: '閉じる',
             editRating: '評価を編集', emojis: '絵文字', enterCustomTitle: 'タイトルを入力...', enterUsername: 'ユーザー名を入力...',
             filterUsers: 'ユーザーを絞り込む...', friend: 'フレンド', genreBreakdownByWatchTime: '視聴時間によるジャンル分布',

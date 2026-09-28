@@ -138,7 +138,7 @@ window.RatingsPluginI18n.tr = {
             addNewRow: 'Satır ekle', addToARow: 'Bir satıra ekle', agree: 'Katılıyorum', allRatings: 'Tüm puanlar',
             allowOthersToFollowMe: 'Başkalarının beni takip etmesine izin ver', background: 'Arka plan',
             block: 'Engelle', clickToView: 'Görmek için tıkla', close: 'Kapat', comments: 'Yorumlar',
-            communityRating: 'Topluluk puanı', createRow: 'Satır oluştur',
+            communityRating: 'Topluluk puanı', mostCommented: 'En çok yorumlanan', mostCommentedEmpty: 'Henüz üç kişiden yorum alan bir yapım yok', createRow: 'Satır oluştur',
             defaultStyleApplied: 'Varsayılan stil uygulandı', deleteRow: 'Satırı sil', disagree: 'Katılmıyorum',
             dismiss: 'Yoksay', editRating: 'Puanı düzenle', emojis: 'Emoji', enterCustomTitle: 'Bir başlık girin...',
             enterUsername: 'Kullanıcı adı girin...', filterUsers: 'Kullanıcıları filtrele...', friend: 'Arkadaş',

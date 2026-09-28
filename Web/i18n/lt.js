@@ -142,7 +142,7 @@ window.RatingsPluginI18n.lt = {
             addNewRow: 'Pridėti eilę', addToARow: 'Įtraukti į eilę', agree: 'Sutinku', allRatings: 'Visi įvertinimai',
             allowOthersToFollowMe: 'Leisti kitiems mane sekti', background: 'Fonas', block: 'Blokuoti',
             clickToView: 'Spustelėkite, kad pamatytumėte', close: 'Uždaryti', comments: 'Komentarai',
-            communityRating: 'Bendruomenės įvertinimas', createRow: 'Sukurti eilę',
+            communityRating: 'Bendruomenės įvertinimas', mostCommented: 'Daugiausiai komentuojama', mostCommentedEmpty: 'Dar nė vieno įrašo, turinčio trijų žmonių apžvalgas', createRow: 'Sukurti eilę',
             defaultStyleApplied: 'Pritaikytas numatytasis stilius', deleteRow: 'Ištrinti eilę', disagree: 'Nesutinku',
             dismiss: 'Atmesti', editRating: 'Redaguoti įvertinimą', emojis: 'Emocijos',
             enterCustomTitle: 'Įveskite pavadinimą...', enterUsername: 'Įveskite vartotojo vardą...',

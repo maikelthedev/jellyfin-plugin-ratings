@@ -124,7 +124,7 @@ window.RatingsPluginI18n.zh = {
             recentActivity: '最近动态', recentReviews: '最近评论', sectionFavoriteFilms: '收藏影片', settings: '设置',
             showsLabel: '剧集', similarTaste: '口味相近', statsTitle: '统计', taste: '口味',
             addNewRow: '添加行', addToARow: '添加到行', agree: '同意', allRatings: '全部评分', allowOthersToFollowMe: '允许他人关注我',
-            background: '背景', block: '屏蔽', clickToView: '点击查看', close: '关闭', comments: '评论', communityRating: '社区评分',
+            background: '背景', block: '屏蔽', clickToView: '点击查看', close: '关闭', comments: '评论', communityRating: '社区评分', mostCommented: '评论最多', mostCommentedEmpty: '还没有作品获得三位用户的评论',
             createRow: '创建行', defaultStyleApplied: '已应用默认样式', deleteRow: '删除行', disagree: '不同意', dismiss: '忽略',
             editRating: '修改评分', emojis: '表情', enterCustomTitle: '输入自定义标题...', enterUsername: '输入用户名...',
             filterUsers: '筛选用户...', friend: '好友', genreBreakdownByWatchTime: '按观看时长的类型分布', genreTasteMatch: '类型口味匹配度',

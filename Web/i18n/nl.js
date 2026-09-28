@@ -139,7 +139,7 @@ window.RatingsPluginI18n.nl = {
             addNewRow: 'Rij toevoegen', addToARow: 'Aan een rij toevoegen', agree: 'Mee eens',
             allRatings: 'Alle beoordelingen', allowOthersToFollowMe: 'Anderen mij laten volgen',
             background: 'Achtergrond', block: 'Blokkeren', clickToView: 'Klik om te bekijken', close: 'Sluiten',
-            comments: 'Reacties', communityRating: 'Communitybeoordeling', createRow: 'Rij maken',
+            comments: 'Reacties', communityRating: 'Communitybeoordeling', mostCommented: 'Meest becommentarieerd', mostCommentedEmpty: 'Nog geen titel heeft beoordelingen van drie mensen', createRow: 'Rij maken',
             defaultStyleApplied: 'Standaardstijl toegepast', deleteRow: 'Rij verwijderen', disagree: 'Niet mee eens',
             dismiss: 'Negeren', editRating: 'Beoordeling bewerken', emojis: 'Emoji\'s',
             enterCustomTitle: 'Voer een titel in...', enterUsername: 'Voer een gebruikersnaam in...',

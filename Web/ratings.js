@@ -133,7 +133,8 @@
                 communityRating: 'Community Rating', createRow: 'Create Row',
                 community: 'Community', communitySubtitle: 'What everyone on this server has been rating',
                 communityOpen: 'Open Community', topRated: 'Top Rated', mostActiveUsers: 'Most Active Users',
-                latestCommented: 'Latest Commented',
+                latestCommented: 'Latest Commented', mostCommented: 'Most Commented',
+                mostCommentedEmpty: 'No title has reviews from three people yet',
                 ratingDistribution: 'Rating Distribution', members: 'Members', titles: 'Titles', refresh: 'Refresh',
                 defaultStyleApplied: 'Default style applied', deleteRow: 'Delete row', disagree: 'Disagree',
                 dismiss: 'Dismiss', editRating: 'Edit rating', emojis: 'Emojis',
@@ -3714,6 +3715,7 @@
 .social-profile-page.letterboxd-style .lb-poster-strip{display:grid;grid-template-columns:repeat(auto-fill,minmax(92px,1fr));gap:12px;}
 .social-profile-page.letterboxd-style .lb-poster-card{cursor:pointer;transition:transform .2s cubic-bezier(.2,.7,.2,1),box-shadow .2s;}
 .social-profile-page.letterboxd-style .lb-poster-card:hover{transform:translateY(-6px) scale(1.05);box-shadow:0 14px 30px rgba(0,0,0,.55);}
+.social-profile-page.letterboxd-style .lb-poster-count{margin-top:2px;font-size:11px;font-weight:600;color:#9ab;text-align:center;letter-spacing:.02em;}
 .social-profile-page.letterboxd-style .lb-poster-card:active{transform:scale(.94);}
 .social-profile-page.letterboxd-style .lb-poster-img{width:100%;aspect-ratio:2/3;border-radius:9px;background:#2c3440 center/cover no-repeat;border:1px solid #34404d;}
 .social-profile-page.letterboxd-style .lb-poster-stars{font-size:11px;margin-top:5px;text-align:center;}
@@ -8687,6 +8689,10 @@
                         '<div class="lb-overview lb-grid">' +
                             '<div class="lb-main">' +
                                 '<section class="lb-section lb-anim">' +
+                                    '<h3 class="lb-sec-title">' + self.escapeHtml(self.t('mostCommented')) + '</h3>' +
+                                    '<div class="lb-poster-strip" id="communityMostCommented"></div>' +
+                                '</section>' +
+                                '<section class="lb-section lb-anim">' +
                                     '<h3 class="lb-sec-title">' + self.escapeHtml(self.t('latestCommented')) + '</h3>' +
                                     '<div class="ratings-community-comments" id="communityLatestCommented"></div>' +
                                 '</section>' +
@@ -8753,6 +8759,7 @@
         /** (Re)fill every panel on an open community page. */
         loadCommunityPage: function () {
             this.loadCommunityStats();
+            this.loadCommunityMostCommented();
             this.loadCommunityTopRated();
             this.loadCommunityMostActiveUsers();
             this.loadCommunityDistribution();
@@ -8806,6 +8813,44 @@
                     return '<div class="lb-poster-card" onclick="RatingsPlugin.openMedia(\'' + self.escapeJs(id) + '\')" title="' + self.escapeHtml(name) + '">' +
                         '<div class="lb-poster-img"' + background + '></div>' +
                         '<div class="lb-poster-stars">' + self.renderStars(item.AverageRating || item.averageRating) + '</div>' +
+                        '</div>';
+                }).join('');
+            }).catch(function () {
+                el.innerHTML = '';
+            });
+        },
+
+        /**
+         * The titles several different people have written a review for, most reviewed first.
+         *
+         * The threshold and the count both have to come from the server: the activity feed is
+         * capped at 100 recent entries, so it can say a title was reviewed lately but not how
+         * many reviewers it has in total - which is exactly what this section is about.
+         */
+        loadCommunityMostCommented: function () {
+            var self = this;
+            var el = document.getElementById('communityMostCommented');
+            if (!el) return;
+
+            self.communityFetch('/Ratings/MostCommented?limit=12&minReviews=3').then(function (items) {
+                if (!document.getElementById('communityMostCommented')) return;
+                if (!items || !items.length) {
+                    el.innerHTML = '<div class="lb-empty-mini">' + self.escapeHtml(self.t('mostCommentedEmpty')) + '</div>';
+                    return;
+                }
+                var baseUrl = ApiClient.serverAddress();
+                el.innerHTML = items.map(function (item) {
+                    var id = item.Id || item.id;
+                    var name = item.Name || item.name || '';
+                    var poster = item.ImageUrl || item.imageUrl;
+                    var count = item.ReviewCount || item.reviewCount || 0;
+                    var background = poster
+                        ? ' style="background-image:url(\'' + self.escapeHtml(baseUrl + poster + '?maxHeight=300') + '\')"'
+                        : '';
+                    return '<div class="lb-poster-card" onclick="RatingsPlugin.openMedia(\'' + self.escapeJs(id) + '\')" title="' + self.escapeHtml(name) + '">' +
+                        '<div class="lb-poster-img"' + background + '></div>' +
+                        '<div class="lb-poster-stars">' + self.renderStars(item.AverageRating || item.averageRating) + '</div>' +
+                        '<div class="lb-poster-count">' + self.escapeHtml(String(count)) + ' ' + self.escapeHtml(self.t('reviews')) + '</div>' +
                         '</div>';
                 }).join('');
             }).catch(function () {

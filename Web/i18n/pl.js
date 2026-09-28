@@ -139,7 +139,7 @@ window.RatingsPluginI18n.pl = {
             addNewRow: 'Dodaj wiersz', addToARow: 'Dodaj do wiersza', agree: 'Zgadzam się',
             allRatings: 'Wszystkie oceny', allowOthersToFollowMe: 'Pozwól innym mnie obserwować', background: 'Tło',
             block: 'Zablokuj', clickToView: 'Kliknij, aby zobaczyć', close: 'Zamknij', comments: 'Komentarze',
-            communityRating: 'Ocena społeczności', createRow: 'Utwórz wiersz',
+            communityRating: 'Ocena społeczności', mostCommented: 'Najczęściej komentowane', mostCommentedEmpty: 'Żaden tytuł nie ma jeszcze recenzji od trzech osób', createRow: 'Utwórz wiersz',
             defaultStyleApplied: 'Zastosowano domyślny styl', deleteRow: 'Usuń wiersz', disagree: 'Nie zgadzam się',
             dismiss: 'Odrzuć', editRating: 'Edytuj ocenę', emojis: 'Emoji', enterCustomTitle: 'Wpisz własny tytuł...',
             enterUsername: 'Wpisz nazwę użytkownika...', filterUsers: 'Filtruj użytkowników...', friend: 'Znajomy',

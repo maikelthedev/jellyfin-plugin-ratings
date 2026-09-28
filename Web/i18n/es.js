@@ -139,7 +139,7 @@ window.RatingsPluginI18n.es = {
             addNewRow: 'Añadir fila', addToARow: 'Añadir a una fila', agree: 'De acuerdo',
             allRatings: 'Todas las valoraciones', allowOthersToFollowMe: 'Permitir que otros me sigan',
             background: 'Fondo', block: 'Bloquear', clickToView: 'Clic para ver', close: 'Cerrar',
-            comments: 'Comentarios', communityRating: 'Valoración de la comunidad', createRow: 'Crear fila',
+            comments: 'Comentarios', communityRating: 'Valoración de la comunidad', mostCommented: 'Más comentado', mostCommentedEmpty: 'Ningún título tiene reseñas de tres personas todavía', createRow: 'Crear fila',
             defaultStyleApplied: 'Estilo por defecto aplicado', deleteRow: 'Eliminar fila', disagree: 'En desacuerdo',
             dismiss: 'Descartar', editRating: 'Editar valoración', emojis: 'Emojis',
             enterCustomTitle: 'Escribe un título...', enterUsername: 'Escribe un usuario...',

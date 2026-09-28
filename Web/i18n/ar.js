@@ -135,7 +135,7 @@ window.RatingsPluginI18n.ar = {
             showsLabel: 'مسلسلات', similarTaste: 'ذوق مشابه', statsTitle: 'الإحصائيات', taste: 'الذوق',
             addNewRow: 'إضافة صف', addToARow: 'إضافة إلى صف', agree: 'أوافق', allRatings: 'كل التقييمات',
             allowOthersToFollowMe: 'السماح للآخرين بمتابعتي', background: 'الخلفية', block: 'حظر',
-            clickToView: 'انقر للعرض', close: 'إغلاق', comments: 'التعليقات', communityRating: 'تقييم المجتمع',
+            clickToView: 'انقر للعرض', close: 'إغلاق', comments: 'التعليقات', communityRating: 'تقييم المجتمع', mostCommented: 'الأكثر تعليقاً', mostCommentedEmpty: 'لا يوجد عنوان لديه مراجعات من ثلاثة أشخاص بعد',
             createRow: 'إنشاء صف', defaultStyleApplied: 'تم تطبيق النمط الافتراضي', deleteRow: 'حذف الصف',
             disagree: 'لا أوافق', dismiss: 'تجاهل', editRating: 'تعديل التقييم', emojis: 'الرموز التعبيرية',
             enterCustomTitle: 'أدخل عنوانًا...', enterUsername: 'أدخل اسم المستخدم...',
