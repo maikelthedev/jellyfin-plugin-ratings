@@ -99,6 +99,10 @@ namespace Jellyfin.Plugin.Ratings.Configuration
             StarDisplayMode = "10-stars";  // "10-stars" (default), "5-stars-half", "5-stars"
             QuickRatingMode = false;  // false = modal (default), true = one-click rating
 
+            // Shared-review OpenGraph cards (Ratings/Share/...). Empty = derive from the request;
+            // set it when a reverse proxy rewrites Host to the backend address.
+            PublicBaseUrl = string.Empty;
+
             // Star widget text options
             ShowRatingStats = true;
             RatingStatsFormat = "{avg}/10 - {count} rating{s}";
@@ -852,5 +856,12 @@ namespace Jellyfin.Plugin.Ratings.Configuration
         /// Gets or sets a value indicating whether to show profile tooltip on review cards.
         /// </summary>
         public bool ShowReviewProfileTooltip { get; set; }
+
+        /// <summary>
+        /// Gets or sets the public base URL used in shared-review links and their image URLs
+        /// (e.g. <c>https://thevelvet.space</c>). Empty derives it from each request, honouring
+        /// X-Forwarded-Proto / X-Forwarded-Host from a TLS-terminating proxy.
+        /// </summary>
+        public string PublicBaseUrl { get; set; }
     }
 }

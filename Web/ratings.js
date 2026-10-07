@@ -11375,6 +11375,20 @@
                 commentBtn.innerHTML = '💬 <span class="comment-count">' + (Number(review.CommentCount) || 0) + '</span>';
                 actionsDiv.appendChild(commentBtn);
 
+                // Sharing hands out the OpenGraph card (Ratings/Share/...): poster, title, stars
+                // and the review, unfurled by the chat client. The link comes from the server's
+                // /info call because only the server knows the public base URL.
+                var shareBtn = document.createElement('button');
+                shareBtn.type = 'button';
+                shareBtn.className = 'user-review-action-btn';
+                shareBtn.setAttribute('data-action', 'share');
+                shareBtn.title = 'Share this review';
+                shareBtn.textContent = '🔗';
+                shareBtn.addEventListener('click', function () {
+                    self.shareReview(safeUserId, safeItemId);
+                });
+                actionsDiv.appendChild(shareBtn);
+
                 // The author gets the edit control on their own review, right here on the page.
                 // It used to exist only inside the "(view all)" list, so changing your own words
                 // meant knowing to open another surface and finding it there. Deliberately not the
@@ -11731,6 +11745,45 @@
         /**
          * Handle like/dislike on review card
          */
+        /**
+         * Shares one review as its OpenGraph card.
+         *
+         * The public link is fetched from the server's authenticated /info endpoint rather than
+         * built here: only the server knows the public base URL (PublicBaseUrl, or the
+         * X-Forwarded-* headers a proxy sets). Falling back to the browser's own address would
+         * hand out the internal host, which unfurls to nothing.
+         *
+         * @param {string} reviewerUserId The review's author.
+         * @param {string} itemId The reviewed item.
+         */
+        shareReview: function (reviewerUserId, itemId) {
+            var self = this;
+            var baseUrl = ApiClient.serverAddress();
+            var fallback = baseUrl + '/Ratings/Share/' + encodeURIComponent(reviewerUserId) + '/' + encodeURIComponent(itemId);
+            var url = fallback + '/info';
+
+            fetch(url, { credentials: 'include', headers: RatingsPlugin.authHeaders() })
+                .then(function (r) { return r.ok ? r.json() : null; })
+                .then(function (info) {
+                    var shareUrl = (info && (info.ShareUrl || info.shareUrl)) || fallback;
+                    var title = (info && (info.Title || info.title)) || document.title;
+
+                    if (navigator.share) {
+                        navigator.share({ title: title, url: shareUrl }).catch(function () {});
+                        return;
+                    }
+
+                    if (navigator.clipboard && navigator.clipboard.writeText) {
+                        navigator.clipboard.writeText(shareUrl).then(function () {
+                            if (self.lbToast) { self.lbToast('Link copied'); }
+                        }).catch(function () { window.prompt('Copy this link', shareUrl); });
+                    } else {
+                        window.prompt('Copy this link', shareUrl);
+                    }
+                })
+                .catch(function () { window.prompt('Copy this link', fallback); });
+        },
+
         handleReviewCardLike: function (reviewerUserId, itemId, isLike, card) {
             const self = this;
             const baseUrl = ApiClient.serverAddress();

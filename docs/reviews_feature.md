@@ -341,3 +341,30 @@ X-Emby-Authorization: MediaBrowser Client="Android App", Device="Pixel 6", Devic
 6. **Keyboard isolation** - On mobile, ensure review textarea doesn't trigger media playback shortcuts
 
 7. **Offline consideration** - Ratings/reviews require network; cache DetailedRatings for offline viewing if needed
+
+---
+
+## Sharing a review (OpenGraph card)
+
+A review is shareable as a link that unfurls with the **poster, the title, the stars and the
+review text**, in the same way the Share Button plugin unfurls an item.
+
+```
+GET /Ratings/Share/{reviewerUserId}/{itemId}        anonymous  OpenGraph HTML to crawlers, 302 to /web/#/details?id=… for a human
+GET /Ratings/Share/{reviewerUserId}/{itemId}/info   authenticated  the same facts as JSON (used by the share button)
+```
+
+| tag | value |
+| --- | --- |
+| `og:title` | `<Title> · ★★★★☆ 8/10` |
+| `og:description` | `★★★★☆ 8/10 — “<review>” — <username>` (review truncated to ~280 chars) |
+| `og:image` | the item's Primary image (`/Items/<id>/Images/Primary`), falling back to the rating's stored `posterUrl` when the item has left the library |
+| `og:url` | the per-review share URL (unique per review, so unfurlers never collide) |
+
+The endpoint is **anonymous** because Discord/WhatsApp/Telegram fetch it without a session; anyone
+holding the link can read that one review (the ids are two GUIDs, not enumerable). `PublicBaseUrl`
+in the plugin config sets the public host; when empty it is derived from the request, honouring
+`X-Forwarded-Proto` / `X-Forwarded-Host` (the same rule the Share Button plugin documents).
+
+The UI adds a 🔗 button to every review card on the item detail page: it asks the server for the
+link and uses `navigator.share` when available, otherwise copies it to the clipboard.
