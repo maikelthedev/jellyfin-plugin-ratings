@@ -11451,11 +11451,17 @@
             ApiClient.getJSON(ApiClient.getUrl(`Ratings/Items/${itemId}/DetailedRatings`))
                 .then(ratings => {
                     if (ratings && ratings.length > 0) {
+                        // On a collection the list spans several titles, so say which one each rating
+                        // is for. For a single title the name would just repeat, so it is left out.
+                        const names = new Set(ratings.map(r => (r.ItemName || r.itemName || '')).filter(Boolean));
+                        const showItem = names.size > 1;
                         let html = '';
                         ratings.forEach(rating => {
+                            const itemName = rating.ItemName || rating.itemName || '';
                             html += `
                                 <li class="ratings-plugin-popup-item">
                                     <span class="ratings-plugin-popup-username">${this.escapeHtml((rating.username ?? rating.Username))}</span>
+                                    ${showItem && itemName ? '<span class="ratings-plugin-popup-itemname">' + this.escapeHtml(itemName) + '</span>' : ''}
                                     <span class="ratings-plugin-popup-rating">${rating.Rating}/10</span>
                                 </li>
                             `;
@@ -11908,6 +11914,10 @@
                 }
 
                 contentDiv.textContent = '';
+                // A collection lists the ratings of several titles, so name the title each row is for,
+                // and act on that title (edit / like / view) rather than on the collection itself.
+                const itemNames = new Set(ratings.map(r => (r.ItemName || r.itemName || '')).filter(Boolean));
+                const showItem = itemNames.size > 1;
                 ratings.forEach(rating => {
                     const isMe = rating.UserId === currentUserId;
                     const hasReview = rating.HasReview;
@@ -11916,7 +11926,7 @@
                     const hasVotes = likeCount > 0 || dislikeCount > 0;
                     // Validate userId is GUID-like (alphanumeric and hyphens only)
                     const safeUserId = String(rating.UserId || '').replace(/[^a-zA-Z0-9-]/g, '');
-                    const safeItemId = String(itemId || '').replace(/[^a-zA-Z0-9-]/g, '');
+                    const safeItemId = String(rating.ItemId || rating.itemId || itemId || '').replace(/[^a-zA-Z0-9-]/g, '');
 
                     var itemDiv = document.createElement('div');
                     itemDiv.className = 'ratings-list-item';
@@ -11932,6 +11942,14 @@
                         usernameSpan.appendChild(youSpan);
                     }
                     itemDiv.appendChild(usernameSpan);
+
+                    if (showItem) {
+                        var nameSpan = document.createElement('span');
+                        nameSpan.className = 'ratings-list-itemname';
+                        nameSpan.textContent = rating.ItemName || rating.itemName || '';
+                        nameSpan.title = nameSpan.textContent;
+                        itemDiv.appendChild(nameSpan);
+                    }
 
                     var ratingSpan = document.createElement('span');
                     ratingSpan.className = 'ratings-list-rating';

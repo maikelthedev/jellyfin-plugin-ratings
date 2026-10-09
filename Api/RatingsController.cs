@@ -397,36 +397,29 @@ namespace Jellyfin.Plugin.Ratings.Api
                 // was rejected with 401 while the same token worked elsewhere (issue #72).
                 var userId = await GetAuthenticatedUserIdAsync().ConfigureAwait(false);
 
-                // Check if this is a collection (BoxSet) - calculate average from child items
+                // Check if this is a collection (BoxSet) - its rating is the average of the ratings
+                // of the titles inside it. Count every rating, not one per rated title, so the number
+                // matches the detail list the "(view all)" popup shows.
                 if (item is MediaBrowser.Controller.Entities.Movies.BoxSet boxSet)
                 {
-                    var childItems = boxSet.GetLinkedChildren();
-                    var childRatings = new List<double>();
-
-                    foreach (var child in childItems)
+                    var boxRatings = new List<double>();
+                    var seen = new HashSet<Guid>();
+                    foreach (var child in boxSet.GetLinkedChildren())
                     {
-                        string? childTmdbId = null;
-                        string? childImdbId = null;
-                        string? childAniDbId = null;
-                        if (child.ProviderIds != null)
+                        // Reviews live on a season, so a child series contributes its season's. Dedupe
+                        // by resolved id: a series and its episodes all map to the same season.
+                        var childId = ResolveRatingTarget(child).Item.Id;
+                        if (seen.Add(childId))
                         {
-                            child.ProviderIds.TryGetValue("Tmdb", out childTmdbId);
-                            child.ProviderIds.TryGetValue("Imdb", out childImdbId);
-                            child.ProviderIds.TryGetValue("AniDB", out childAniDbId);
-                        }
-
-                        var childStats = _repository.GetRatingStats(child.Id, null, childTmdbId, childImdbId, childAniDbId);
-                        if (childStats.TotalRatings > 0)
-                        {
-                            childRatings.Add(childStats.AverageRating);
+                            boxRatings.AddRange(_repository.GetItemRatings(childId).Select(r => r.Rating));
                         }
                     }
 
                     var collectionStats = new RatingStats
                     {
                         ItemId = itemId,
-                        TotalRatings = childRatings.Count,
-                        AverageRating = childRatings.Count > 0 ? Math.Round(childRatings.Average(), 2) : 0
+                        TotalRatings = boxRatings.Count,
+                        AverageRating = boxRatings.Count > 0 ? Math.Round(boxRatings.Average(), 2) : 0
                     };
 
                     return Ok(collectionStats);
@@ -2503,41 +2496,67 @@ namespace Jellyfin.Plugin.Ratings.Api
 
                 // Get current user for like status
                 var currentUserId = await GetAuthenticatedUserIdAsync().ConfigureAwait(false);
-
-                // Reviews live on the season, not the episode (see ResolveRatingTarget), so read the
-                // list from there - otherwise an episode page would show no reviews at all.
-                var ratingItemId = ResolveRatingTarget(item).Item.Id;
-                var ratings = _repository.GetItemRatings(ratingItemId);
                 var canModerate = IsJellyfinAdmin(currentUserId);
                 var reviewsEnabled = Plugin.ReviewsEnabled;
-                var detailedRatings = ratings.Select(r =>
+
+                // A collection's headline rating is the average of its titles (see GetRatingStats), so
+                // its detail list has to be those same ratings, each labelled with the title it came
+                // from - otherwise "(view all)" on a collection opens an empty list.
+                var sources = new Dictionary<Guid, string>();
+                if (item is MediaBrowser.Controller.Entities.Movies.BoxSet boxSet)
                 {
-                    var user = _userManager.GetUserById(r.UserId);
-                    var likeCounts = _repository.GetReviewLikeCounts(r.UserId, ratingItemId);
-                    var userLike = currentUserId != Guid.Empty
-                        ? _repository.GetUserReviewLike(r.UserId, ratingItemId, currentUserId)
-                        : null;
-                    var commentCount = _repository.GetReviewCommentCount(r.UserId, ratingItemId);
-
-                    return new UserRatingDetail
+                    foreach (var child in boxSet.GetLinkedChildren())
                     {
-                        UserId = r.UserId,
-                        Username = user?.Username ?? "Unknown User",
-                        Rating = r.Rating,
-                        CreatedAt = r.CreatedAt,
-                        ReviewText = reviewsEnabled ? r.ReviewText : null,
-                        HasReview = reviewsEnabled && !string.IsNullOrWhiteSpace(r.ReviewText),
-                        LikeCount = likeCounts.LikeCount,
-                        DislikeCount = likeCounts.DislikeCount,
-                        UserLiked = userLike,
-                        CommentCount = commentCount,
-                        ProfileHidden = r.UserId != currentUserId
-                            && _socialRepository.GetProfile(r.UserId)?.Privacy?.ProfileVisibility == "Private",
-                        CanModerate = canModerate
-                    };
-                }).OrderByDescending(r => r.Rating).ThenBy(r => r.Username).ToList();
+                        // Name the title the rating is stored on (a season, not a bare "Episode 1").
+                        // Keyed by id because several children (a series and its episodes) resolve to
+                        // the same season and must not list its ratings twice.
+                        var target = ResolveRatingTarget(child).Item;
+                        sources[target.Id] = DisplayName(target);
+                    }
+                }
+                else
+                {
+                    // Reviews live on the season, not the episode (see ResolveRatingTarget), so read
+                    // the list from there - otherwise an episode page would show no reviews at all.
+                    var target = ResolveRatingTarget(item).Item;
+                    sources[target.Id] = item.Name;
+                }
 
-                return Ok(detailedRatings);
+                var detailedRatings = new List<UserRatingDetail>();
+                foreach (var source in sources)
+                {
+                    var sourceId = source.Key;
+                    foreach (var r in _repository.GetItemRatings(sourceId))
+                    {
+                        var user = _userManager.GetUserById(r.UserId);
+                        var likeCounts = _repository.GetReviewLikeCounts(r.UserId, sourceId);
+                        var userLike = currentUserId != Guid.Empty
+                            ? _repository.GetUserReviewLike(r.UserId, sourceId, currentUserId)
+                            : null;
+                        var commentCount = _repository.GetReviewCommentCount(r.UserId, sourceId);
+
+                        detailedRatings.Add(new UserRatingDetail
+                        {
+                            UserId = r.UserId,
+                            Username = user?.Username ?? "Unknown User",
+                            Rating = r.Rating,
+                            CreatedAt = r.CreatedAt,
+                            ReviewText = reviewsEnabled ? r.ReviewText : null,
+                            HasReview = reviewsEnabled && !string.IsNullOrWhiteSpace(r.ReviewText),
+                            LikeCount = likeCounts.LikeCount,
+                            DislikeCount = likeCounts.DislikeCount,
+                            UserLiked = userLike,
+                            CommentCount = commentCount,
+                            ItemId = sourceId,
+                            ItemName = source.Value,
+                            ProfileHidden = r.UserId != currentUserId
+                                && _socialRepository.GetProfile(r.UserId)?.Privacy?.ProfileVisibility == "Private",
+                            CanModerate = canModerate
+                        });
+                    }
+                }
+
+                return Ok(detailedRatings.OrderByDescending(r => r.Rating).ThenBy(r => r.Username).ToList());
             }
             catch (Exception ex)
             {

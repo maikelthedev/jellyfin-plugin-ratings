@@ -334,6 +334,17 @@
     flex: 1;
 }
 
+/* On a collection the popup spans several titles, so each row is labelled with its title. */
+.ratings-plugin-popup-itemname {
+    color: #9ab0c3;
+    font-size: 0.9em;
+    margin-left: 1em;
+    min-width: 0;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
 .ratings-plugin-popup-rating {
     color: #ffd700;
     font-weight: 600;
@@ -542,6 +553,16 @@
     flex: 1;
     color: #fff;
     font-weight: 500;
+}
+/* A collection's list spans several titles, so each row names its own. */
+.ratings-list-itemname {
+    flex: 2;
+    min-width: 0;
+    color: #9ab0c3;
+    font-size: 0.9em;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 .ratings-list-rating {
     color: #ffd700;

@@ -58,6 +58,17 @@ namespace Jellyfin.Plugin.Ratings.Models
         public int CommentCount { get; set; }
 
         /// <summary>
+        /// Gets or sets the id of the item this rating belongs to. Set when a collection lists the
+        /// ratings of several titles, so each row can be told apart.
+        /// </summary>
+        public Guid? ItemId { get; set; }
+
+        /// <summary>
+        /// Gets or sets the name of the item this rating belongs to (a collection lists several).
+        /// </summary>
+        public string? ItemName { get; set; }
+
+        /// <summary>
         /// Gets or sets a value indicating whether the reviewer has hidden their profile, so the
         /// client shows their name without linking to it.
         /// </summary>
