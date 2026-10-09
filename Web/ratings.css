@@ -8994,6 +8994,234 @@ body.ratings-no-card-overlay .netflix-card.has-rating::after {
     max-height: 100vh;
     height: 100vh;
 }
+
+/* Community as a routed page (see showCommunityPage in ratings.js).
+   It occupies the content area under Jellyfin's fixed app bar, which stays visible and usable,
+   instead of floating as a full-viewport modal over it. */
+.social-profile-page.lb-route-page {
+    top: var(--lb-route-top, 0px);
+    background: #14181c;
+    backdrop-filter: none;
+    z-index: 900;
+    cursor: default;
+}
+.social-profile-page.lb-route-page .social-profile-container.letterboxd {
+    max-width: 1100px;
+    min-height: 100%;
+    max-height: none;
+    height: auto;
+    overflow: visible;
+    border-radius: 0;
+    box-shadow: none;
+}
+/* The routed content any plugin route page replaces is hidden while the route is open. */
+body.lb-route-page-open #reactRoot main > * {
+    display: none !important;
+}
+
+/* Curation page: a larger poster grid with the title/year under each poster, plus the
+   scope selector and shuffle button above it. */
+.lb-curation-controls {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin: 6px 2px 16px;
+    flex-wrap: wrap;
+}
+.lb-curation-scope {
+    display: inline-flex;
+    background: #1a212a;
+    border: 1px solid #2c3440;
+    border-radius: 9px;
+    overflow: hidden;
+}
+.lb-curation-scope .lb-scope-btn {
+    background: transparent;
+    border: 0;
+    color: #9ab0c3;
+    padding: 8px 14px;
+    font-size: 13px;
+    cursor: pointer;
+    transition: background .15s, color .15s;
+}
+.lb-curation-scope .lb-scope-btn:hover { color: #fff; }
+.lb-curation-scope .lb-scope-btn.active { background: #00e054; color: #14181c; font-weight: 600; }
+/* The shuffle button is the point of the page, so it is the loudest thing on it: a pulsing,
+   glowing pill that says what it is for. */
+.lb-curation-shuffle {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    background: linear-gradient(135deg, #00e054, #40bcf4);
+    color: #0b0f12;
+    border: 0;
+    border-radius: 999px;
+    padding: 11px 20px;
+    font-size: 13.5px;
+    font-weight: 800;
+    letter-spacing: .01em;
+    cursor: pointer;
+    animation: lb-curation-shuffle-pulse 1.9s ease-in-out infinite;
+}
+.lb-curation-shuffle:hover { filter: brightness(1.08); }
+.lb-curation-shuffle:active { transform: scale(.96); }
+@keyframes lb-curation-shuffle-pulse {
+    0%, 100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(0,224,84,0); }
+    50% { transform: scale(1.05); box-shadow: 0 0 20px 4px rgba(0,224,84,.55); }
+}
+@media (prefers-reduced-motion: reduce) { .lb-curation-shuffle { animation: none; } }
+.lb-curation-list { display: flex; flex-direction: column; gap: 16px; }
+.lb-curation-card {
+    display: flex;
+    gap: 18px;
+    background: linear-gradient(180deg, #202831, #1a212a);
+    border: 1px solid #2c3440;
+    border-radius: 14px;
+    padding: 16px;
+    transition: transform .18s cubic-bezier(.2,.7,.2,1), border-color .18s, box-shadow .18s;
+}
+.lb-curation-card:hover {
+    transform: translateY(-3px);
+    border-color: #00e054;
+    box-shadow: 0 14px 34px rgba(0,0,0,.5);
+}
+/* The first episode, ready to play, where the poster used to be. */
+.lb-curation-card-player {
+    position: relative;
+    flex: 0 0 240px;
+    width: 240px;
+    border-radius: 10px;
+    overflow: hidden;
+    background: #000;
+}
+.lb-curation-video {
+    display: block;
+    width: 100%;
+    max-height: 460px;
+    border-radius: 10px;
+    background: #000;
+    object-fit: contain;
+}
+.lb-curation-video-poster { aspect-ratio: 9/16; background: #2c3440 center/cover no-repeat; }
+.lb-curation-badge {
+    position: absolute;
+    left: 6px;
+    top: 6px;
+    z-index: 2;
+    background: rgba(0,0,0,.72);
+    color: #ffce3a;
+    font-size: 12px;
+    font-weight: 700;
+    padding: 2px 7px;
+    border-radius: 999px;
+    pointer-events: none;
+}
+.lb-curation-card-body { display: flex; flex-direction: column; min-width: 0; flex: 1; }
+.lb-curation-card-title {
+    font-size: 19px;
+    font-weight: 700;
+    color: #fff;
+    line-height: 1.25;
+    cursor: pointer;
+}
+.lb-curation-card-title:hover { color: #00e054; }
+.lb-curation-year { font-size: 14px; font-weight: 500; color: #8fa3b5; }
+.lb-curation-type {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: .06em;
+    color: #9ab0c3;
+    border: 1px solid #3a4552;
+    border-radius: 999px;
+    padding: 1px 8px;
+    vertical-align: middle;
+}
+.lb-curation-tags { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+.lb-curation-tag {
+    background: #2c3440;
+    color: #b9c6d2;
+    border-radius: 999px;
+    padding: 3px 10px;
+    font-size: 11px;
+    letter-spacing: .02em;
+}
+.lb-curation-tag-user { background: rgba(0,224,84,.14); color: #7ff0a6; }
+.lb-curation-desc {
+    margin: 10px 0 0;
+    color: #b9c6d2;
+    font-size: 13.5px;
+    line-height: 1.55;
+    display: -webkit-box;
+    -webkit-line-clamp: 4;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+}
+.lb-curation-card-actions { margin-top: auto; padding-top: 12px; }
+.lb-curation-rate {
+    background: #00e054;
+    color: #14181c;
+    border: 0;
+    border-radius: 9px;
+    padding: 9px 16px;
+    font-size: 13px;
+    font-weight: 700;
+    cursor: pointer;
+    transition: transform .12s, box-shadow .18s;
+}
+.lb-curation-rate:hover { box-shadow: 0 8px 20px rgba(0,224,84,.35); }
+.lb-curation-rate:active { transform: scale(.96); }
+@media (max-width: 560px) {
+    .lb-curation-card { gap: 12px; padding: 12px; }
+    .lb-curation-card-player { flex-basis: 140px; width: 140px; }
+    .lb-curation-card-title { font-size: 16px; }
+}
+/* Home-page Curation card: the same Jellyfin card markup as the DONATE card, so it is exactly
+   the same size and sits beside it in the "Most Commented" row. A soft green heartbeat mirrors
+   the DONATE card's red one. */
+.ratings-curation-card .cardImageContainer {
+    background: linear-gradient(150deg, #0f2419, #12243a 55%, #1b1330);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    animation: ratings-curation-beat 2.6s ease-in-out infinite;
+    transform-origin: center;
+}
+.ratings-curation-card .cardImageContainer::after {
+    content: "✨";
+    font-size: 44px;
+    line-height: 1;
+    filter: drop-shadow(0 4px 10px rgba(0,0,0,.5));
+}
+@keyframes ratings-curation-beat {
+    0%, 100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(0,224,84,0); }
+    15% { transform: scale(1.025); box-shadow: 0 0 14px 2px rgba(0,224,84,.5); }
+    30% { transform: scale(1); box-shadow: 0 0 8px 1px rgba(0,224,84,.25); }
+    45% { transform: scale(1.025); box-shadow: 0 0 14px 2px rgba(0,224,84,.5); }
+    60% { transform: scale(1); box-shadow: 0 0 0 0 rgba(0,224,84,0); }
+}
+@media (prefers-reduced-motion: reduce) { .ratings-curation-card .cardImageContainer { animation: none; } }
+.lb-curation-pagination {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 16px;
+    padding: 26px 0 40px;
+}
+.lb-curation-pagebtn {
+    background: #2c3440;
+    color: #dfe7ee;
+    border: 1px solid #3a4552;
+    border-radius: 9px;
+    padding: 8px 16px;
+    font-size: 13px;
+    cursor: pointer;
+    transition: background .15s, transform .12s;
+}
+.lb-curation-pagebtn:hover:not(:disabled) { background: #00e054; color: #14181c; border-color: #00e054; }
+.lb-curation-pagebtn:active:not(:disabled) { transform: scale(.96); }
+.lb-curation-pagebtn:disabled { opacity: .4; cursor: default; }
+.lb-curation-pageinfo { color: #9ab0c3; font-size: 13px; }
 .profile-loading-spinner {
     display: flex;
     flex-direction: column;

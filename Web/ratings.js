@@ -22,6 +22,24 @@
         starDisplayMode: '10-stars', // '10-stars' (default), '5-stars-half', '5-stars'
         quickRatingMode: false, // false = modal (default), true = one-click rating
 
+        // Community page state (it is a route, #/community, not a floating overlay)
+        _communityOpen: false, // Whether the community route page is rendered
+        _communityInitialLoad: false, // Whether the route was the one the client loaded on
+        _communityEntryViaLoad: false, // A legacy deep link normalised on first load
+        _initialRouteCheck: false, // True only during the first onPageChange()
+        _routePageResizeHandler: null, // Re-measures the app bar while a route page is open
+        _routePageScrollLocked: false, // Whether a route page locked the body scroll
+        _routePagePrevBodyOverflow: '', // Body overflow to restore when the last route page closes
+        _routePagePrevHtmlOverflow: '', // Document overflow to restore when the last route page closes
+
+        // Curation page state (route #/curation: titles nobody has reviewed yet, in random order)
+        _curationOpen: false, // Whether the curation route page is rendered
+        _curationInitialLoad: false, // Whether the route was the one the client loaded on
+        _curationSeed: 0, // Seed for the random order; a new seed reshuffles
+        _curationPage: 1, // Current page of the curation queue
+        _curationScope: 'all', // 'all' = never reviewed by anyone, 'me' = not reviewed by the caller
+        _curationTotalPages: 1, // Pages reported by the last fetch
+
         // Chat state
         chatEnabled: false, // Whether chat feature is enabled (loaded from config)
         chatConfig: null, // Chat configuration from server
@@ -133,6 +151,16 @@
                 communityRating: 'Community Rating', createRow: 'Create Row',
                 community: 'Community', communitySubtitle: 'What everyone on this server has been rating',
                 communityOpen: 'Open Community', topRated: 'Top Rated', mostActiveUsers: 'Most Active Users',
+                curation: 'Curation', curationSubtitle: 'Titles nobody has reviewed yet, in a random order',
+                curationOpen: 'Open Curation',
+                curationHomeHint: 'titles nobody has reviewed — pick the best ones',
+                neverReviewed: 'Never reviewed', notReviewedByYou: 'Not reviewed by you',
+                scopeAnyone: 'Anyone', scopeMe: 'Not reviewed by me',
+                curationEmpty: 'Nothing left to curate — every title here has a review.',
+                curationPick: 'Select a title to watch it here',
+                rateAndReview: 'Rate & review', noDescription: 'No description yet.',
+                shuffle: 'Shuffle', shuffleHint: "Don't like this? Try again",
+                previous: 'Previous', next: 'Next', page: 'Page',
                 latestCommented: 'Latest Commented', mostCommented: 'Most Commented',
                 mostCommentedEmpty: 'No title has reviews from three people yet',
                 ratingDistribution: 'Rating Distribution', members: 'Members', titles: 'Titles', refresh: 'Refresh',
@@ -3495,8 +3523,11 @@
                 }
             }, 500); // Check every 500ms for URL changes
 
-            // Initial check
+            // Initial check. Flagged so the community route knows it was the entry point (a
+            // shared #/community link or a reload), which changes how its Back button behaves.
+            self._initialRouteCheck = true;
             this.onPageChange();
+            self._initialRouteCheck = false;
         },
 
         /**
@@ -3519,13 +3550,32 @@
                 this.waitForElementAndInject(itemId);
             }
 
-            // The community overlay follows the URL: ?community=1 opens it, and losing that
-            // parameter closes it again - including when a poster opened from inside it navigates
-            // away, which leaves the overlay dangling otherwise.
+            // The community page follows the route: #/community opens it, and leaving the route
+            // closes it again - including when a poster opened from inside it navigates away. The
+            // URL already moved, so the teardown must not touch history.
+            //
+            // A legacy ?community=1 link is rewritten to the route it now lives at, in place, so
+            // the address bar shows the route and Back still leads somewhere sensible.
+            if (!/^#!?\/community/.test(window.location.hash || '') &&
+                /[?&]community=(?:1|true|yes)\b/i.test(window.location.href)) {
+                if (this._initialRouteCheck) {
+                    this._communityEntryViaLoad = true;
+                }
+                window.location.replace('#/community');
+                return;
+            }
+
             if (this.communityRequestedInUrl()) {
                 this.showCommunityPage();
             } else if (this._communityOpen) {
-                this.closeCommunityPage();
+                this.closeCommunityPage(true);
+            }
+
+            // Same shape for the curation route.
+            if (this.curationRequestedInUrl()) {
+                this.showCurationPage();
+            } else if (this._curationOpen) {
+                this.closeCurationPage(true);
             }
         },
 
@@ -8627,9 +8677,126 @@
             }
         },
 
-        /** True when the URL asks for the community page, e.g. ?community=1. */
+        /**
+         * True when the URL asks for the community page.
+         *
+         * The page has its own route - #/community - so it survives a reload, can be copied out
+         * of the address bar and works with Back/Forward like any other Jellyfin page. The old
+         * ?community=1 deep link is still honoured so links already in the wild keep working.
+         *
+         * @returns {boolean} True when the community route (or its legacy link) is requested.
+         */
         communityRequestedInUrl: function () {
+            var hash = window.location.hash || '';
+            if (/^#!?\/community(?:[?&#]|$)/.test(hash)) {
+                return true;
+            }
             return /[?&]community=(?:1|true|yes)\b/i.test(window.location.href);
+        },
+
+        /**
+         * Height of the fixed header the routed page sits under, so the page starts exactly where
+         * Jellyfin's own routed content would. Returns 0 when there is no fixed header.
+         *
+         * @returns {number} Header height in pixels.
+         */
+        resolveRouteTop: function () {
+            var candidates = [
+                document.querySelector('header.MuiAppBar-root'),
+                document.querySelector('.skinHeader')
+            ];
+            for (var i = 0; i < candidates.length; i++) {
+                var el = candidates[i];
+                if (!el) {
+                    continue;
+                }
+                var style = window.getComputedStyle(el);
+                if (style.position !== 'fixed' && style.position !== 'sticky') {
+                    continue;
+                }
+                var rect = el.getBoundingClientRect();
+                if (rect.height > 0) {
+                    return Math.round(rect.height);
+                }
+            }
+            return 0;
+        },
+
+        /** Move the route page so it starts under the current header height. */
+        updateRoutePageTop: function () {
+            document.documentElement.style.setProperty('--lb-route-top', this.resolveRouteTop() + 'px');
+        },
+
+        /**
+         * Take the content area over for a route page: keep Jellyfin's app bar and drawer, hide the
+         * routed content behind, and place the page under the header.
+         */
+        applyRoutePageLayout: function () {
+            var self = this;
+            document.body.classList.add('lb-route-page-open');
+            self.updateRoutePageTop();
+            if (!self._routePageResizeHandler) {
+                self._routePageResizeHandler = function () { self.updateRoutePageTop(); };
+                window.addEventListener('resize', self._routePageResizeHandler);
+            }
+        },
+
+        /**
+         * Hand the content area back to Jellyfin's router: unhide the routed content and stop
+         * tracking the header height. Does nothing while another route page is still open, so
+         * moving between community and curation does not hand the content area back mid-switch.
+         */
+        clearRoutePageLayout: function () {
+            var self = this;
+            if (document.getElementById('communityPage') || document.getElementById('curationPage')) {
+                return;
+            }
+            document.body.classList.remove('lb-route-page-open');
+            if (self._routePageResizeHandler) {
+                window.removeEventListener('resize', self._routePageResizeHandler);
+                self._routePageResizeHandler = null;
+            }
+        },
+
+        /**
+         * Lock the page scroll behind a route page. Only the first route page remembers the real
+         * previous value, so switching between them cannot save "hidden" as the value to restore.
+         */
+        lockRoutePageScroll: function () {
+            if (!this._routePageScrollLocked) {
+                this._routePagePrevBodyOverflow = document.body.style.overflow;
+                this._routePagePrevHtmlOverflow = document.documentElement.style.overflow;
+                this._routePageScrollLocked = true;
+            }
+            document.body.style.overflow = 'hidden';
+            document.documentElement.style.overflow = 'hidden';
+        },
+
+        /** Release the scroll lock once no route page is left. */
+        unlockRoutePageScroll: function () {
+            if (document.getElementById('communityPage') || document.getElementById('curationPage')) {
+                return;
+            }
+            this._routePageScrollLocked = false;
+            document.body.style.overflow = this._routePagePrevBodyOverflow || '';
+            document.documentElement.style.overflow = this._routePagePrevHtmlOverflow || '';
+        },
+
+        /**
+         * Title for the browser tab while the community route is open, in Jellyfin's own
+         * "<page> - <server>" shape.
+         *
+         * @returns {string} Document title.
+         */
+        communityDocumentTitle: function () {
+            var name = '';
+            try {
+                var info = ApiClient.serverInfo && ApiClient.serverInfo();
+                name = (info && (info.ServerName || info.serverName || info.Name)) || '';
+            } catch (e) {
+                // A missing server name is not worth a broken title over.
+            }
+            return name ? (this.t('community') + ' - ' + name) : this.t('community');
         },
 
         /**
@@ -8641,13 +8808,28 @@
             if (!self.communityEnabled()) {
                 return;
             }
-            if (document.getElementById('communityPage')) {
-                return;
-            }
+
             // Nothing to show before login.
             if (typeof ApiClient === 'undefined' || !ApiClient.accessToken()) {
                 return;
             }
+
+            // The router renders its own "page not found" for an unknown route and sets the
+            // document title with it, so the title is (re)asserted here and on the follow-up page
+            // change that the navigation triggers.
+            if (document.getElementById('communityPage')) {
+                document.title = self.communityDocumentTitle();
+                return;
+            }
+            document.title = self.communityDocumentTitle();
+
+            // Whether this open came from the client's own entry point (a shared #/community link
+            // or a reload) rather than from in-app navigation. It decides whether Back can unwind
+            // inside Jellyfin or has to go home instead. The URL itself is owned by the router:
+            // the sidebar and home links are real anchors to #/community, so the browser and
+            // Jellyfin's history stay in charge.
+            self._communityInitialLoad = !!self._initialRouteCheck || !!self._communityEntryViaLoad;
+            self._communityEntryViaLoad = false;
 
             // This page reuses the profile's Letterboxd styling, and those rules are injected on
             // demand by showProfilePage(). Without this the poster grid and the two-column layout
@@ -8656,7 +8838,7 @@
 
             var page = document.createElement('div');
             page.id = 'communityPage';
-            page.className = 'social-profile-page letterboxd-style';
+            page.className = 'social-profile-page letterboxd-style lb-route-page';
             page.innerHTML =
                 '<div class="social-profile-container letterboxd">' +
                     '<div class="lb-toolbar">' +
@@ -8719,41 +8901,408 @@
                     '</div>' +
                 '</div>';
 
-            // Clicking the backdrop closes, exactly like the profile overlay.
-            page.addEventListener('click', function (e) {
-                if (e.target === page) {
-                    self.closeCommunityPage();
-                }
-            });
-
             document.body.appendChild(page);
             self._communityOpen = true;
 
-            // Same reason as the profile: the address bar has to carry the link that opens this.
-            self.reflectUrlParam('community', '1');
+            // Swap the routed content area over instead of floating on top of it: Jellyfin's app
+            // bar and drawer stay in place, the content they would show is hidden, and the page is
+            // positioned under the header. The rules live in ratings.css under .lb-route-page.
+            self.applyRoutePageLayout();
 
-            // Same scroll lock the profile overlay uses.
-            self._prevBodyOverflow = document.body.style.overflow;
-            self._prevHtmlOverflow = document.documentElement.style.overflow;
-            document.body.style.overflow = 'hidden';
-            document.documentElement.style.overflow = 'hidden';
+            // Keep the body from scrolling behind the page; the page scrolls on its own.
+            self.lockRoutePageScroll();
 
             self.loadCommunityPage();
+
+            // On a fresh load the router renders its not-found route after this script and resets
+            // the title; put ours back once it has settled.
+            setTimeout(function () {
+                if (self._communityOpen) {
+                    document.title = self.communityDocumentTitle();
+                    self.updateRoutePageTop();
+                }
+            }, 400);
         },
 
         /**
-         * Close the community page, and drop the deep link that may have opened it.
+         * Close the community page.
+         *
+         * @param {boolean} [skipHistory] True when the URL has already left the route (the router
+         *                                navigated, or Back was pressed), so only the page and its
+         *                                layout are torn down and history is left alone.
          */
-        closeCommunityPage: function () {
+        closeCommunityPage: function (skipHistory) {
             var self = this;
             var page = document.getElementById('communityPage');
             if (page) {
                 page.remove();
             }
             self._communityOpen = false;
-            document.body.style.overflow = self._prevBodyOverflow || '';
-            document.documentElement.style.overflow = self._prevHtmlOverflow || '';
-            self.stripUrlParam('community');
+            self.clearRoutePageLayout();
+            self.unlockRoutePageScroll();
+
+            if (skipHistory) {
+                return;
+            }
+
+            // The page's own Back/close button: leave the route the way the browser would. When
+            // the route was the entry point (a shared link or a reload) there is no Jellyfin page
+            // behind it, so go home instead of wandering out of the app.
+            if (self._communityInitialLoad) {
+                // Replace rather than push, so closing a directly-loaded route does not leave the
+                // route behind for Back to stumble into again. location.replace fires hashchange,
+                // which is what lets Jellyfin's router render the home page.
+                window.location.replace('#/home');
+            } else {
+                window.history.back();
+            }
+        },
+
+        /** True when the URL asks for the curation page. */
+        curationRequestedInUrl: function () {
+            var hash = window.location.hash || '';
+            return /^#!?\/curation(?:[?&#]|$)/.test(hash);
+        },
+
+        /**
+         * Title for the browser tab while the curation route is open, in Jellyfin's own
+         * "<page> - <server>" shape.
+         *
+         * @returns {string} Document title.
+         */
+        curationDocumentTitle: function () {
+            var name = '';
+            try {
+                var info = ApiClient.serverInfo && ApiClient.serverInfo();
+                name = (info && (info.ServerName || info.serverName || info.Name)) || '';
+            } catch (e) {
+                // A missing server name is not worth a broken title over.
+            }
+            return name ? (this.t('curation') + ' - ' + name) : this.t('curation');
+        },
+
+        /**
+         * Open the curation page: the titles nobody has reviewed yet, in a random order, so the
+         * library can be worked through a bit at a time.
+         */
+        showCurationPage: function () {
+            var self = this;
+
+            // Nothing to show before login.
+            if (typeof ApiClient === 'undefined' || !ApiClient.accessToken()) {
+                return;
+            }
+
+            if (document.getElementById('curationPage')) {
+                document.title = self.curationDocumentTitle();
+                return;
+            }
+            document.title = self.curationDocumentTitle();
+
+            self._curationInitialLoad = !!self._initialRouteCheck;
+
+            // A fresh seed per open is what makes it random; the seed itself is kept for the life
+            // of the page so paging stays stable until the user shuffles.
+            self._curationSeed = Math.floor(Math.random() * 2147483647) + 1;
+            self._curationPage = 1;
+
+            // The page reuses the profile's Letterboxd rules, which are injected on demand.
+            self.injectProfileRedesignStyles();
+
+            var page = document.createElement('div');
+            page.id = 'curationPage';
+            page.className = 'social-profile-page letterboxd-style lb-route-page';
+            page.innerHTML =
+                '<div class="social-profile-container letterboxd">' +
+                    '<div class="lb-toolbar">' +
+                        '<div class="lb-back" onclick="RatingsPlugin.closeCurationPage()">' +
+                            '<svg viewBox="0 0 24 24" width="20" height="20"><path fill="currentColor" d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z"/></svg>' +
+                            self.t('back') +
+                        '</div>' +
+                        '<div class="lb-toolbar-actions">' +
+                            '<button type="button" class="lb-toolbar-btn" onclick="RatingsPlugin.loadCurationPage()" title="' + self.t('refresh') + '">⟳</button>' +
+                        '</div>' +
+                    '</div>' +
+                    '<div class="lb-profile-header">' +
+                        '<div class="lb-header-content">' +
+                            '<div class="lb-avatar">' +
+                                // The curation logo: a magnifying glass over a question mark - "what should
+                                // I watch next?" - with the plugin's gold sparkle. Drawn inline so there
+                                // is no external image to hotlink or licence.
+                                '<svg viewBox="0 0 64 64" width="56" height="56" aria-hidden="true">' +
+                                    '<circle cx="26" cy="26" r="15" fill="none" stroke="#ffffff" stroke-width="5"/>' +
+                                    '<line x1="37" y1="37" x2="50" y2="50" stroke="#ffffff" stroke-width="6" stroke-linecap="round"/>' +
+                                    '<text x="26" y="34" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="20" font-weight="700" fill="#ffd54a">?</text>' +
+                                    '<path d="M50 8l1.9 4.8 4.8 1.9-4.8 1.9L50 21.4l-1.9-4.8-4.8-1.9 4.8-1.9z" fill="#ffd54a"/>' +
+                                '</svg>' +
+                            '</div>' +
+                            '<div class="lb-user-info">' +
+                                '<h1 class="lb-username">' + self.escapeHtml(self.t('curation')) + '</h1>' +
+                                '<p class="lb-bio">' + self.escapeHtml(self.t('curationSubtitle')) + '</p>' +
+                            '</div>' +
+                        '</div>' +
+                    '</div>' +
+                    '<div class="lb-stats-bar" id="curationStats"></div>' +
+                    '<div class="lb-content">' +
+                        '<div class="lb-curation-controls">' +
+                            '<div class="lb-curation-scope">' +
+                                '<button type="button" class="lb-scope-btn" data-scope="all" onclick="RatingsPlugin.curationSetScope(\'all\')">' + self.escapeHtml(self.t('scopeAnyone')) + '</button>' +
+                                '<button type="button" class="lb-scope-btn" data-scope="me" onclick="RatingsPlugin.curationSetScope(\'me\')">' + self.escapeHtml(self.t('scopeMe')) + '</button>' +
+                            '</div>' +
+                            '<button type="button" class="lb-curation-shuffle" onclick="RatingsPlugin.shuffleCuration()">🎲 ' + self.escapeHtml(self.t('shuffleHint')) + '</button>' +
+                        '</div>' +
+                        '<div class="lb-curation-list" id="curationGrid"></div>' +
+                        '<div class="lb-curation-pagination" id="curationPagination"></div>' +
+                    '</div>' +
+                '</div>';
+
+            document.body.appendChild(page);
+            self._curationOpen = true;
+
+            self.applyRoutePageLayout();
+
+            // Keep the body from scrolling behind the page; the page scrolls on its own.
+            self.lockRoutePageScroll();
+
+            self.loadCurationPage();
+
+            // On a fresh load the router renders its not-found route after this script and resets
+            // the title; put ours back once it has settled.
+            setTimeout(function () {
+                if (self._curationOpen) {
+                    document.title = self.curationDocumentTitle();
+                    self.updateRoutePageTop();
+                }
+            }, 400);
+        },
+
+        /**
+         * Close the curation page.
+         *
+         * @param {boolean} [skipHistory] True when the URL has already left the route, so only the
+         *                                page and its layout are torn down and history is left alone.
+         */
+        closeCurationPage: function (skipHistory) {
+            var self = this;
+            var videos = document.querySelectorAll('#curationGrid .lb-curation-video');
+            Array.prototype.forEach.call(videos, function (v) {
+                try { v.pause(); } catch (e) { /* ignore */ }
+            });
+            var page = document.getElementById('curationPage');
+            if (page) {
+                page.remove();
+            }
+            self._curationOpen = false;
+            self.clearRoutePageLayout();
+            self.unlockRoutePageScroll();
+
+            if (skipHistory) {
+                return;
+            }
+
+            if (self._curationInitialLoad) {
+                window.location.replace('#/home');
+            } else {
+                window.history.back();
+            }
+        },
+
+        /** (Re)fill the curation grid for the current seed, page and scope. */
+        loadCurationPage: function () {
+            var self = this;
+            var grid = document.getElementById('curationGrid');
+            if (!grid) return;
+
+            self.setCurationScopeButtons();
+            grid.innerHTML = '<div class="lb-loading-small">' + self.escapeHtml(self.t('loading')) + '</div>';
+
+            var path = '/Ratings/Curation?scope=' + encodeURIComponent(self._curationScope) +
+                '&page=' + self._curationPage +
+                '&limit=5&seed=' + self._curationSeed;
+
+            self.communityFetch(path).then(function (data) {
+                if (!document.getElementById('curationGrid')) return;
+                var items = (data && (data.items || data.Items)) || [];
+                var total = data && (data.totalCount != null ? data.totalCount : data.TotalCount);
+                self._curationTotalPages = (data && (data.totalPages || data.TotalPages)) || 1;
+                self._curationPage = (data && (data.page || data.Page)) || self._curationPage;
+                self.renderCurationStats(total);
+                self.renderCurationGrid(items);
+                self.renderCurationPagination();
+            }).catch(function () {
+                var g = document.getElementById('curationGrid');
+                if (g) g.innerHTML = '<div class="lb-empty-mini">' + self.escapeHtml(self.t('socialLoadFailed')) + '</div>';
+            });
+        },
+
+        /** The one-line total above the grid. */
+        renderCurationStats: function (total) {
+            var self = this;
+            var el = document.getElementById('curationStats');
+            if (!el) return;
+            var label = self._curationScope === 'me' ? self.t('notReviewedByYou') : self.t('neverReviewed');
+            el.innerHTML = '<div class="lb-stat">' +
+                '<span class="lb-stat-value">' + self.escapeHtml(String(total == null ? 0 : total)) + '</span>' +
+                '<span class="lb-stat-label">' + self.escapeHtml(label) + '</span>' +
+                '</div>';
+        },
+
+        /**
+         * Stream URL for a curation card's first episode. H.264 in a browser-friendly container is
+         * streamed as-is; everything else (the HEVC episodes) is transcoded to H.264 by Jellyfin on
+         * the fly, so it plays in the browser too.
+         *
+         * @param {object} item Curation item.
+         * @returns {string} Stream URL, or '' when there is nothing to play.
+         */
+        curationStreamUrl: function (item) {
+            var playId = item.PlayItemId || item.playItemId;
+            if (!playId) {
+                return '';
+            }
+            var base = ApiClient.serverAddress();
+            var token = ApiClient.accessToken();
+            var direct = item.PlayDirect === true || item.playDirect === true;
+            return direct
+                ? base + '/Videos/' + playId + '/stream?static=true&mediaSourceId=' + playId + '&api_key=' + encodeURIComponent(token)
+                : base + '/Videos/' + playId + '/stream.mp4?VideoCodec=h264&AudioCodec=aac&VideoBitrate=4000000&AudioBitrate=128000&mediaSourceId=' + playId + '&api_key=' + encodeURIComponent(token);
+        },
+
+        /** Pause every curation video except one, so only a single episode is ever streaming. */
+        curationPauseOthers: function (except) {
+            Array.prototype.forEach.call(document.querySelectorAll('#curationGrid .lb-curation-video'), function (v) {
+                if (v !== except && !v.paused) {
+                    try { v.pause(); } catch (e) { /* ignore */ }
+                }
+            });
+        },
+
+        /**
+         * The five titles on this page, each with its poster, description and tags, so the choice
+         * of what to rate next is made from the actual content rather than a wall of covers.
+         */
+        renderCurationGrid: function (items) {
+            var self = this;
+            var grid = document.getElementById('curationGrid');
+            if (!grid) return;
+            if (!items.length) {
+                grid.innerHTML = '<div class="lb-empty-mini">' + self.escapeHtml(self.t('curationEmpty')) + '</div>';
+                return;
+            }
+            var baseUrl = ApiClient.serverAddress();
+            grid.innerHTML = items.map(function (item) {
+                var id = item.Id || item.id;
+                var name = item.Name || item.name || '';
+                var year = item.Year || item.year;
+                var type = item.Type || item.type || '';
+                var poster = item.ImageUrl || item.imageUrl;
+                var overview = item.Overview || item.overview || '';
+                var genres = item.Genres || item.genres || [];
+                var tags = item.Tags || item.tags || [];
+                var community = item.CommunityRating != null ? item.CommunityRating : item.communityRating;
+
+                var badge = community
+                    ? '<span class="lb-curation-badge">★ ' + self.escapeHtml(Number(community).toFixed(1)) + '</span>'
+                    : '';
+
+                var chips = [];
+                var genreNames = {};
+                genres.slice(0, 4).forEach(function (genre) {
+                    genreNames[String(genre).toLowerCase()] = true;
+                    chips.push('<span class="lb-curation-tag">' + self.escapeHtml(genre) + '</span>');
+                });
+                // A tag that already showed as a genre is not repeated as a tag.
+                tags.filter(function (tag) {
+                    return !genreNames[String(tag).toLowerCase()];
+                }).slice(0, 6).forEach(function (tag) {
+                    chips.push('<span class="lb-curation-tag lb-curation-tag-user">' + self.escapeHtml(tag) + '</span>');
+                });
+                var tagsHtml = chips.length ? '<div class="lb-curation-tags">' + chips.join('') + '</div>' : '';
+                var open = ' onclick="RatingsPlugin.openMedia(\'' + self.escapeJs(id) + '\')"';
+
+                // The first episode, ready to play, in place of a static poster.
+                var stream = self.curationStreamUrl(item);
+                var posterUrl = poster ? baseUrl + poster + '?maxHeight=440' : '';
+                var video = stream
+                    ? '<video class="lb-curation-video" controls playsinline preload="metadata"' +
+                        (posterUrl ? ' poster="' + self.escapeHtml(posterUrl) + '"' : '') +
+                        ' src="' + self.escapeHtml(stream) + '"></video>'
+                    : (posterUrl ? '<div class="lb-curation-video lb-curation-video-poster" style="background-image:url(\'' + self.escapeHtml(posterUrl) + '\')"></div>' : '');
+
+                return '<div class="lb-curation-card" data-id="' + self.escapeHtml(id) + '">' +
+                    '<div class="lb-curation-card-player">' + badge + video + '</div>' +
+                    '<div class="lb-curation-card-body">' +
+                        '<div class="lb-curation-card-title"' + open + '>' + self.escapeHtml(name) +
+                            (year ? ' <span class="lb-curation-year">(' + self.escapeHtml(String(year)) + ')</span>' : '') +
+                            (type ? ' <span class="lb-curation-type">' + self.escapeHtml(type) + '</span>' : '') +
+                        '</div>' +
+                        tagsHtml +
+                        '<p class="lb-curation-desc">' + self.escapeHtml(overview || self.t('noDescription')) + '</p>' +
+                        '<div class="lb-curation-card-actions">' +
+                            '<button type="button" class="lb-curation-rate" onclick="RatingsPlugin.openMedia(\'' + self.escapeJs(id) + '\')">' + self.escapeHtml(self.t('rateAndReview')) + '</button>' +
+                        '</div>' +
+                    '</div>' +
+                    '</div>';
+            }).join('');
+
+            // Only one preview streams at a time: starting any card pauses the others.
+            Array.prototype.forEach.call(grid.querySelectorAll('.lb-curation-video'), function (v) {
+                v.addEventListener('play', function () { self.curationPauseOthers(v); });
+            });
+        },
+
+        /** Previous / page x of y / next. Hidden while everything fits on one page. */
+        renderCurationPagination: function () {
+            var self = this;
+            var el = document.getElementById('curationPagination');
+            if (!el) return;
+            if (self._curationTotalPages <= 1) {
+                el.innerHTML = '';
+                return;
+            }
+            var p = self._curationPage;
+            var total = self._curationTotalPages;
+            el.innerHTML =
+                '<button type="button" class="lb-curation-pagebtn"' + (p <= 1 ? ' disabled' : '') + ' onclick="RatingsPlugin.curationGoPage(' + (p - 1) + ')">‹ ' + self.escapeHtml(self.t('previous')) + '</button>' +
+                '<span class="lb-curation-pageinfo">' + self.escapeHtml(self.t('page')) + ' ' + p + ' / ' + total + '</span>' +
+                '<button type="button" class="lb-curation-pagebtn"' + (p >= total ? ' disabled' : '') + ' onclick="RatingsPlugin.curationGoPage(' + (p + 1) + ')">' + self.escapeHtml(self.t('next')) + ' ›</button>';
+        },
+
+        /** Jump to a page of the current random order. */
+        curationGoPage: function (n) {
+            var page = Math.max(1, Math.min(this._curationTotalPages || 1, Number(n) || 1));
+            this._curationPage = page;
+            this.loadCurationPage();
+            var el = document.getElementById('curationPage');
+            if (el && el.scrollTo) {
+                el.scrollTo({ top: 0, behavior: 'smooth' });
+            }
+        },
+
+        /** Switch between "never reviewed by anyone" and "not reviewed by me". */
+        curationSetScope: function (scope) {
+            scope = scope === 'me' ? 'me' : 'all';
+            if (scope === this._curationScope) return;
+            this._curationScope = scope;
+            this._curationPage = 1;
+            this._curationSeed = Math.floor(Math.random() * 2147483647) + 1;
+            this.loadCurationPage();
+        },
+
+        /** Mark the active scope button. */
+        setCurationScopeButtons: function () {
+            var self = this;
+            var btns = document.querySelectorAll('#curationPage .lb-scope-btn');
+            Array.prototype.forEach.call(btns, function (b) {
+                b.classList.toggle('active', b.getAttribute('data-scope') === self._curationScope);
+            });
+        },
+
+        /** Reshuffle the queue: a new seed puts a different set of titles first. */
+        shuffleCuration: function () {
+            this._curationSeed = Math.floor(Math.random() * 2147483647) + 1;
+            this._curationPage = 1;
+            this.loadCurationPage();
         },
 
         /** (Re)fill every panel on an open community page. */
@@ -9103,22 +9652,65 @@
             link.setAttribute('is', 'emby-linkbutton');
             link.className = 'navMenuOption lnkMediaFolder ratings-community-link';
             link.setAttribute('data-itemid', 'ratingscommunity');
-            link.href = '#/home?community=1';
+            // The href is the real route, so middle-click and open-in-new-tab still work and point
+            // at a URL that loads the community view directly.
+            link.href = '#/community';
             link.innerHTML = '<span class="material-icons navMenuOptionIcon" aria-hidden="true">people</span>' +
                 '<span class="navMenuOptionText">' + self.escapeHtml(self.t('community')) + '</span>';
 
-            // Let the href do the navigating: that is what puts ?community=1 in the address bar for
-            // a human to copy. preventDefault() here would open the page with no address at all.
+            // Handle the plain click ourselves so the page opens at once, without a flash of the
+            // router's not-found page; the href still owns the URL and the history entry.
             link.addEventListener('click', function () {
                 var panel = document.getElementById('social-friends-panel');
                 if (panel) {
                     panel.classList.remove('open');
                 }
+                self.showCommunityPage();
             });
 
             var signOut = block.querySelector('.btnLogout');
             if (signOut && signOut.parentNode === block) {
                 block.insertBefore(link, signOut);
+            } else {
+                block.appendChild(link);
+            }
+        },
+
+        /**
+         * Sidebar entry for the curation page, right above Community.
+         *
+         * Same rules as the community entry: a real #/curation anchor keeps middle-click and
+         * open-in-new-tab working, while the click handlers open the page at once.
+         */
+        injectCurationSidebarLink: function () {
+            var self = this;
+
+            var block = document.querySelector('.userMenuOptions');
+            if (!block || block.querySelector('.ratings-curation-link')) {
+                return;
+            }
+
+            var link = document.createElement('a');
+            link.setAttribute('is', 'emby-linkbutton');
+            link.className = 'navMenuOption lnkMediaFolder ratings-curation-link';
+            link.setAttribute('data-itemid', 'ratingscuration');
+            link.href = '#/curation';
+            link.innerHTML = '<span class="material-icons navMenuOptionIcon" aria-hidden="true">auto_awesome</span>' +
+                '<span class="navMenuOptionText">' + self.escapeHtml(self.t('curation')) + '</span>';
+
+            link.addEventListener('click', function () {
+                var panel = document.getElementById('social-friends-panel');
+                if (panel) {
+                    panel.classList.remove('open');
+                }
+                self.showCurationPage();
+            });
+
+            // Above Community when it is there, otherwise above Sign out.
+            var community = block.querySelector('.ratings-community-link');
+            var anchor = community || block.querySelector('.btnLogout');
+            if (anchor && anchor.parentNode === block) {
+                block.insertBefore(link, anchor);
             } else {
                 block.appendChild(link);
             }
@@ -9156,9 +9748,17 @@
                     '<h2 class="sectionTitle sectionTitle-cards padded-left">' + self.escapeHtml(self.t('community')) + '</h2>' +
                     // A real anchor, not a button: its href is the link a human copies, and it still
                     // works with middle-click and open-in-new-tab.
-                    '<a class="sectionTitleButton ratings-community-home-open" href="#/home?community=1">' + self.escapeHtml(self.t('communityOpen')) + '</a>' +
+                    '<a class="sectionTitleButton ratings-community-home-open" href="#/community">' + self.escapeHtml(self.t('communityOpen')) + '</a>' +
                 '</div>' +
                 '<div class="ratings-community-home-stats padded-left padded-right" id="ratingsCommunityHomeStats"></div>';
+
+            // Same handling as the sidebar entry: open at once, but let the href own the URL.
+            var openLink = card.querySelector('.ratings-community-home-open');
+            if (openLink) {
+                openLink.addEventListener('click', function () {
+                    self.showCommunityPage();
+                });
+            }
 
             container.insertBefore(card, container.firstChild);
 
@@ -9182,6 +9782,68 @@
         },
 
         /**
+         * A Curation card in the home "Most Commented" row, directly beside the DONATE card.
+         *
+         * The row and the DONATE card come from the injected userscript; this card is built with
+         * the very same Jellyfin card markup, so it is exactly the same size, and it is dropped in
+         * right after DONATE - ahead of the most-reviewed posters. A soft green heartbeat (the
+         * sibling of DONATE's red one) makes the eye land on it.
+         */
+        injectCurationHomeCard: function () {
+            var self = this;
+
+            var hash = window.location.hash;
+            if (hash && hash !== '#/' && hash !== '#!/' && !hash.includes('home')) {
+                return;
+            }
+
+            var list = document.getElementById('ratingsMostCommentedHomeList');
+            if (!list || list.querySelector('.ratings-curation-card')) {
+                return;
+            }
+            // The userscript lays the row out with DONATE first; wait for it before inserting.
+            var donate = list.querySelector('.card.je-mc-donate');
+            if (!donate) {
+                return;
+            }
+
+            var card = document.createElement('div');
+            card.className = 'card overflowPortraitCard card-hoverable ratings-curation-card';
+            card.innerHTML =
+                '<div class="cardBox cardBox-bottompadded">' +
+                    '<div class="cardScalable">' +
+                        '<div class="cardPadder cardPadder-overflowPortrait"></div>' +
+                        '<a class="cardImageContainer coveredImage cardContent itemAction ratings-curation-card" href="#/curation" aria-label="' + self.escapeHtml(self.t('curation')) + '" role="img"></a>' +
+                    '</div>' +
+                    '<div class="cardText cardTextCentered cardText-first"><bdi>' +
+                        '<a class="itemAction textActionButton ratings-curation-card" href="#/curation">' + self.escapeHtml(self.t('curation').toUpperCase()) + '</a>' +
+                    '</bdi></div>' +
+                    '<div class="cardText cardTextCentered cardText-secondary"><bdi>' +
+                        '<span id="ratingsCurationHomeStats">…</span> ' + self.escapeHtml(self.t('neverReviewed')) +
+                    '</bdi></div>' +
+                '</div>';
+
+            // Open at once on a plain click; the href still owns the URL and the history entry.
+            Array.prototype.forEach.call(card.querySelectorAll('a'), function (a) {
+                a.addEventListener('click', function () {
+                    self.showCurationPage();
+                });
+            });
+
+            donate.insertAdjacentElement('afterend', card);
+
+            self.communityFetch('/Ratings/Curation?scope=all&limit=1&seed=1').then(function (data) {
+                var target = document.getElementById('ratingsCurationHomeStats');
+                if (!target) return;
+                var total = data && (data.totalCount != null ? data.totalCount : data.TotalCount) || 0;
+                target.textContent = String(total);
+            }).catch(function () {
+                var target = document.getElementById('ratingsCurationHomeStats');
+                if (target) target.textContent = '';
+            });
+        },
+
+        /**
          * Keep the community entry points in place.
          *
          * The sidebar block is rebuilt by Jellyfin on navigation, and the home page re-renders
@@ -9199,7 +9861,9 @@
             var refresh = function () {
                 try {
                     self.injectCommunitySidebarLink();
+                    self.injectCurationSidebarLink();
                     self.injectCommunityHomeCard();
+                    self.injectCurationHomeCard();
                 } catch (e) {
                     // A missing drawer or a half-rendered home page must not break anything else.
                 }
@@ -9225,8 +9889,9 @@
                         if (node.nodeType !== 1) {
                             continue;
                         }
-                        if ((node.classList && (node.classList.contains('userMenuOptions') || node.classList.contains('homeSectionsContainer'))) ||
-                            (node.querySelector && node.querySelector('.userMenuOptions, .homeSectionsContainer'))) {
+                        if ((node.classList && (node.classList.contains('userMenuOptions') || node.classList.contains('homeSectionsContainer') || node.classList.contains('je-mc-donate'))) ||
+                            node.id === 'ratingsMostCommentedHomeList' ||
+                            (node.querySelector && node.querySelector('.userMenuOptions, .homeSectionsContainer, .je-mc-donate, #ratingsMostCommentedHomeList'))) {
                             schedule();
                             return;
                         }
