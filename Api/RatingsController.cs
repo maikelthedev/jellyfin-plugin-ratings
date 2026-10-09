@@ -397,34 +397,6 @@ namespace Jellyfin.Plugin.Ratings.Api
                 // was rejected with 401 while the same token worked elsewhere (issue #72).
                 var userId = await GetAuthenticatedUserIdAsync().ConfigureAwait(false);
 
-                // Check if this is a collection (BoxSet) - its rating is the average of the ratings
-                // of the titles inside it. Count every rating, not one per rated title, so the number
-                // matches the detail list the "(view all)" popup shows.
-                if (item is MediaBrowser.Controller.Entities.Movies.BoxSet boxSet)
-                {
-                    var boxRatings = new List<double>();
-                    var seen = new HashSet<Guid>();
-                    foreach (var child in boxSet.GetLinkedChildren())
-                    {
-                        // Reviews live on a season, so a child series contributes its season's. Dedupe
-                        // by resolved id: a series and its episodes all map to the same season.
-                        var childId = ResolveRatingTarget(child).Item.Id;
-                        if (seen.Add(childId))
-                        {
-                            boxRatings.AddRange(_repository.GetItemRatings(childId).Select(r => r.Rating));
-                        }
-                    }
-
-                    var collectionStats = new RatingStats
-                    {
-                        ItemId = itemId,
-                        TotalRatings = boxRatings.Count,
-                        AverageRating = boxRatings.Count > 0 ? Math.Round(boxRatings.Average(), 2) : 0
-                    };
-
-                    return Ok(collectionStats);
-                }
-
                 // Extract provider IDs for fallback lookup (handles replaced media files)
                 string? tmdbId = null;
                 string? imdbId = null;
@@ -2499,28 +2471,11 @@ namespace Jellyfin.Plugin.Ratings.Api
                 var canModerate = IsJellyfinAdmin(currentUserId);
                 var reviewsEnabled = Plugin.ReviewsEnabled;
 
-                // A collection's headline rating is the average of its titles (see GetRatingStats), so
-                // its detail list has to be those same ratings, each labelled with the title it came
-                // from - otherwise "(view all)" on a collection opens an empty list.
-                var sources = new Dictionary<Guid, string>();
-                if (item is MediaBrowser.Controller.Entities.Movies.BoxSet boxSet)
-                {
-                    foreach (var child in boxSet.GetLinkedChildren())
-                    {
-                        // Name the title the rating is stored on (a season, not a bare "Episode 1").
-                        // Keyed by id because several children (a series and its episodes) resolve to
-                        // the same season and must not list its ratings twice.
-                        var target = ResolveRatingTarget(child).Item;
-                        sources[target.Id] = DisplayName(target);
-                    }
-                }
-                else
-                {
-                    // Reviews live on the season, not the episode (see ResolveRatingTarget), so read
-                    // the list from there - otherwise an episode page would show no reviews at all.
-                    var target = ResolveRatingTarget(item).Item;
-                    sources[target.Id] = item.Name;
-                }
+                // A rating belongs to the item itself: a collection is reviewed as a collection, not
+                // as the sum of its titles. Reviews of a series live on its season (see
+                // ResolveRatingTarget), so an episode page reads the season's.
+                var target = ResolveRatingTarget(item).Item;
+                var sources = new Dictionary<Guid, string> { [target.Id] = item.Name };
 
                 var detailedRatings = new List<UserRatingDetail>();
                 foreach (var source in sources)
