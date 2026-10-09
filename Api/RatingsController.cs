@@ -319,17 +319,21 @@ namespace Jellyfin.Plugin.Ratings.Api
                 // clients can still rate. Null leaves any stored review as it was.
                 var sanitizedReview = Plugin.ReviewsEnabled && review != null ? SanitizeInput(review, 2000) : null;
 
+                // An episode's rating is really a rating of the drama, so it is stored on the season
+                // (see ResolveRatingTarget) rather than the two-minute episode.
+                var target = ResolveRatingTarget(item);
+
                 // Remember what was rated, so the entry still shows a title and a poster if the
                 // item is later removed from the library (issue #72).
                 var snapshot = new RatingSnapshot
                 {
-                    Title = item.Name,
+                    Title = target.Title,
                     Year = item.ProductionYear,
-                    MediaType = item is MediaBrowser.Controller.Entities.TV.Series ? "Series" : "Movie",
+                    MediaType = target.MediaType,
                     IsExternal = false
                 };
 
-                var result = await _repository.SetRatingAsync(userId, itemId, rating, tmdbId, imdbId, aniDbId, sanitizedReview, snapshot).ConfigureAwait(false);
+                var result = await _repository.SetRatingAsync(userId, target.Item.Id, rating, tmdbId, imdbId, aniDbId, sanitizedReview, snapshot).ConfigureAwait(false);
                 _logger.LogDebug("User rated item {ItemId} with {Rating}", itemId, rating);
 
                 // Jellyfin's own image URL dies with the item, so fetch a poster that will outlive
@@ -337,7 +341,7 @@ namespace Jellyfin.Plugin.Ratings.Api
                 QueueTmdbPosterBackfill(result);
 
                 // Mirror into Jellyfin's native fields so external apps can read it via the API.
-                WriteNativeRating(userId, item, rating);
+                WriteNativeRating(userId, target.Item, rating);
 
                 // Broadcast profile stats update via WebSocket
                 _ = Task.Run(async () =>
@@ -439,7 +443,7 @@ namespace Jellyfin.Plugin.Ratings.Api
                     item.ProviderIds.TryGetValue("AniDB", out aniDbId);
                 }
 
-                var stats = _repository.GetRatingStats(itemId, userId != Guid.Empty ? userId : null, tmdbId, imdbId, aniDbId);
+                var stats = _repository.GetRatingStats(ResolveRatingTarget(item).Item.Id, userId != Guid.Empty ? userId : null, tmdbId, imdbId, aniDbId);
 
                 return Ok(stats);
             }
@@ -535,7 +539,9 @@ namespace Jellyfin.Plugin.Ratings.Api
                     return Unauthorized("User not authenticated");
                 }
 
-                var rating = _repository.GetUserRating(userId, itemId);
+                var ratingItem = _libraryManager.GetItemById(itemId);
+                var ratingTargetId = ratingItem != null ? ResolveRatingTarget(ratingItem).Item.Id : itemId;
+                var rating = _repository.GetUserRating(userId, ratingTargetId);
                 if (rating == null)
                 {
                     return NotFound("No rating found for this user and item");
@@ -1908,6 +1914,40 @@ namespace Jellyfin.Plugin.Ratings.Api
         }
 
         /// <summary>
+        /// The item a rating is stored against. A vertical drama is reviewed as a whole, so an
+        /// episode's rating belongs to its season - reviewing each two-minute episode separately is
+        /// meaningless. Falls back to the episode when it has no season.
+        /// </summary>
+        /// <param name="item">The item the client addressed.</param>
+        /// <returns>The item to store against, plus the title and media type to remember for it.</returns>
+        private (MediaBrowser.Controller.Entities.BaseItem Item, string Title, string MediaType) ResolveRatingTarget(MediaBrowser.Controller.Entities.BaseItem item)
+        {
+            if (item is MediaBrowser.Controller.Entities.TV.Episode episode)
+            {
+                var season = episode.SeasonId != Guid.Empty ? _libraryManager.GetItemById(episode.SeasonId) : null;
+                if (season != null)
+                {
+                    var series = episode.SeriesId != Guid.Empty ? _libraryManager.GetItemById(episode.SeriesId) : null;
+                    return (season, series?.Name ?? episode.SeriesName ?? item.Name, "Series");
+                }
+            }
+
+            return (item, item.Name, item is MediaBrowser.Controller.Entities.TV.Series ? "Series" : "Movie");
+        }
+
+        /// <summary>
+        /// Resolves a raw item id to the id a rating is stored against (see ResolveRatingTarget).
+        /// Used by the review like/comment/admin endpoints, which are addressed by item id.
+        /// </summary>
+        /// <param name="itemId">Item id as the client sent it.</param>
+        /// <returns>The id the rating/review lives on.</returns>
+        private Guid ResolveRatingItemId(Guid itemId)
+        {
+            var item = _libraryManager.GetItemById(itemId);
+            return item != null ? ResolveRatingTarget(item).Item.Id : itemId;
+        }
+
+        /// <summary>
         /// Deletes the current user's rating for an item.
         /// </summary>
         /// <param name="itemId">Item ID.</param>
@@ -1927,17 +1967,18 @@ namespace Jellyfin.Plugin.Ratings.Api
                     return Unauthorized("User not authenticated");
                 }
 
-                var deleted = await _repository.DeleteRatingAsync(userId, itemId).ConfigureAwait(false);
+                var deleteItem = _libraryManager.GetItemById(itemId);
+                var deleteTargetId = deleteItem != null ? ResolveRatingTarget(deleteItem).Item.Id : itemId;
+                var deleted = await _repository.DeleteRatingAsync(userId, deleteTargetId).ConfigureAwait(false);
                 if (!deleted)
                 {
                     return NotFound("No rating found to delete");
                 }
 
                 // Clear/recompute the native rating fields to match.
-                var deletedItem = _libraryManager.GetItemById(itemId);
-                if (deletedItem != null)
+                if (deleteItem != null)
                 {
-                    ClearNativeRating(userId, deletedItem);
+                    ClearNativeRating(userId, ResolveRatingTarget(deleteItem).Item);
                 }
 
                 _logger.LogDebug("User deleted rating for item {ItemId}", itemId);
@@ -2278,17 +2319,20 @@ namespace Jellyfin.Plugin.Ratings.Api
                 // Get current user for like status
                 var currentUserId = await GetAuthenticatedUserIdAsync().ConfigureAwait(false);
 
-                var ratings = _repository.GetItemRatings(itemId);
+                // Reviews live on the season, not the episode (see ResolveRatingTarget), so read the
+                // list from there - otherwise an episode page would show no reviews at all.
+                var ratingItemId = ResolveRatingTarget(item).Item.Id;
+                var ratings = _repository.GetItemRatings(ratingItemId);
                 var canModerate = IsJellyfinAdmin(currentUserId);
                 var reviewsEnabled = Plugin.ReviewsEnabled;
                 var detailedRatings = ratings.Select(r =>
                 {
                     var user = _userManager.GetUserById(r.UserId);
-                    var likeCounts = _repository.GetReviewLikeCounts(r.UserId, itemId);
+                    var likeCounts = _repository.GetReviewLikeCounts(r.UserId, ratingItemId);
                     var userLike = currentUserId != Guid.Empty
-                        ? _repository.GetUserReviewLike(r.UserId, itemId, currentUserId)
+                        ? _repository.GetUserReviewLike(r.UserId, ratingItemId, currentUserId)
                         : null;
-                    var commentCount = _repository.GetReviewCommentCount(r.UserId, itemId);
+                    var commentCount = _repository.GetReviewCommentCount(r.UserId, ratingItemId);
 
                     return new UserRatingDetail
                     {
@@ -2350,6 +2394,8 @@ namespace Jellyfin.Plugin.Ratings.Api
                     return BadRequest("Cannot like your own review");
                 }
 
+                itemId = ResolveRatingItemId(itemId);
+
                 // Verify review exists
                 // A plain star rating can be agreed or disagreed with as well, so only the rating
                 // itself has to exist - review text is no longer required.
@@ -2397,6 +2443,7 @@ namespace Jellyfin.Plugin.Ratings.Api
         {
             try
             {
+                itemId = ResolveRatingItemId(itemId);
                 var comments = _repository.GetReviewComments(reviewerUserId, itemId);
                 var result = comments.Select(c =>
                 {
@@ -2446,6 +2493,8 @@ namespace Jellyfin.Plugin.Ratings.Api
                 {
                     return Unauthorized("User not authenticated");
                 }
+
+                itemId = ResolveRatingItemId(itemId);
 
                 // Sanitize comment text
                 var sanitizedText = SanitizeInput(text, 500);
@@ -2548,6 +2597,8 @@ namespace Jellyfin.Plugin.Ratings.Api
                 {
                     return StatusCode(StatusCodes.Status403Forbidden, "Admin access required");
                 }
+
+                itemId = ResolveRatingItemId(itemId);
 
                 if (removeRating)
                 {
