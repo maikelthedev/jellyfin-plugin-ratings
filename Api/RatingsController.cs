@@ -1734,7 +1734,35 @@ namespace Jellyfin.Plugin.Ratings.Api
                     reviewed = _repository.GetReviewedItemIds();
                 }
 
-                var unreviewed = items.Where(i => !reviewed.Contains(i.Id)).ToList();
+                // A review lives on a season, so a show counts as reviewed only when all of its
+                // seasons are. Build series -> season ids once (one library query) rather than
+                // resolving each of the library's items one at a time.
+                var seasonIdsBySeries = _libraryManager.GetItemList(new MediaBrowser.Controller.Entities.InternalItemsQuery
+                {
+                    IncludeItemTypes = new[] { Jellyfin.Data.Enums.BaseItemKind.Season },
+                    Recursive = true
+                })
+                    .OfType<MediaBrowser.Controller.Entities.TV.Season>()
+                    .GroupBy(s => s.SeriesId)
+                    .ToDictionary(g => g.Key, g => g.Select(s => s.Id).ToList());
+
+                var unreviewed = items
+                    .Where(i =>
+                    {
+                        if (reviewed.Contains(i.Id))
+                        {
+                            return false;
+                        }
+
+                        // Still worth curating while a season of the show has no review.
+                        if (seasonIdsBySeries.TryGetValue(i.Id, out var seasonIds))
+                        {
+                            return seasonIds.Any(s => !reviewed.Contains(s));
+                        }
+
+                        return true;
+                    })
+                    .ToList();
                 var totalCount = unreviewed.Count;
 
                 // The caller may already have rated a title without reviewing it, so the card can
