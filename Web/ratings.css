@@ -9095,6 +9095,23 @@ body.lb-route-page-open #reactRoot main > * {
 .lb-ph-num span { font-size: 11px; letter-spacing: .14em; text-transform: uppercase; color: #9ab0c3; }
 .lb-ph-div { width: 1px; align-self: stretch; background: #2c3440; }
 
+/* Profile's stat-led header: count, identity and actions, with the optional header media
+   behind it (same shape as community and curation). */
+.lb-header-stat-profile { position: relative; overflow: hidden; flex-wrap: wrap; row-gap: 14px; padding: 20px 22px; border-radius: 16px; background: #1a212a; border: 1px solid #2c3440; }
+.lb-header-stat-profile .lb-header-bg { position: absolute; inset: 0; height: auto; }
+.lb-header-stat-profile.has-media .lb-header-bg { background: #14181c; }
+.lb-header-stat-profile.has-media .lb-header-bg::after { content: ""; position: absolute; inset: 0; background: linear-gradient(90deg, rgba(20,24,28,.55) 0%, rgba(20,24,28,.85) 60%, rgba(20,24,28,.95) 100%); z-index: 1; pointer-events: none; }
+.lb-header-stat-profile > *:not(.lb-header-bg) { position: relative; z-index: 2; }
+.lb-header-stat-profile.has-media .lb-username,
+.lb-header-stat-profile.has-media .lb-bio,
+.lb-header-stat-profile.has-media .lb-status-text,
+.lb-header-stat-profile.has-media .lb-joined { color: #fff; text-shadow: 0 1px 3px rgba(0,0,0,.85); }
+.lb-ph-identity { display: flex; align-items: center; gap: 14px; flex: 1; min-width: 0; }
+.lb-avatar-sm { width: 64px; height: 64px; font-size: 26px; border-width: 3px; }
+.lb-avatar-sm .lb-status-dot { width: 14px; height: 14px; bottom: 2px; right: 2px; }
+.lb-header-stat-profile .lb-username { font-size: 24px; }
+.lb-header-stat-profile .lb-header-actions { margin-left: auto; }
+
 /* 10 — neon glow */
 .lb-header-neon { position: relative; display: flex; align-items: center; justify-content: space-between; gap: 24px; padding: 24px 28px; border-radius: 16px; background: #0d1117; overflow: hidden; }
 .lb-header-neon::before { content: ""; position: absolute; inset: -2px; border-radius: 18px; background: conic-gradient(from 0deg, #00e054, #40bcf4, #a855f7, #ffd54a, #00e054); animation: lbHeaderSpin 6s linear infinite; z-index: 0; }

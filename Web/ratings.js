@@ -161,7 +161,7 @@
                 curationPick: 'Select a title to watch it here',
                 rateAndReview: 'Rate & review', noDescription: 'No description yet.',
                 watchRateReview: 'Watch, rate & review', addToPlaylist: 'Add to my playlist',
-                curationPlaylistAdded: 'Added to Watch later', curationPlaylistFailed: 'Could not add to your playlist',
+                curationPlaylistAdded: 'Added to', curationPlaylistFailed: 'Could not add to your playlist',
                 yourRating: 'Your rating', curationRated: 'Rated', curationRateFailed: 'Could not save your rating',
                 headerStyle: 'Header style', toReview: 'to review',
                 shuffle: 'Shuffle', shuffleHint: "Don't like this? Try again",
@@ -3570,15 +3570,20 @@
                 return;
             }
 
+            // A ?profile= link is a page of its own and takes precedence over the route it rides on
+            // (it is usually attached to #/community), so it replaces that page instead of opening
+            // behind it.
+            var profileRequested = !!this.getProfileIdFromUrl();
+
             if (this.communityRequestedInUrl()) {
-                this.showCommunityPage();
+                if (!profileRequested) { this.showCommunityPage(); }
             } else if (this._communityOpen) {
                 this.closeCommunityPage(true);
             }
 
             // Same shape for the curation route.
             if (this.curationRequestedInUrl()) {
-                this.showCurationPage();
+                if (!profileRequested) { this.showCurationPage(); }
             } else if (this._curationOpen) {
                 this.closeCurationPage(true);
             }
@@ -3647,23 +3652,16 @@
             // Create profile page container
             var page = document.createElement('div');
             page.id = 'socialProfilePage';
-            page.className = 'social-profile-page letterboxd-style';
+            page.className = 'social-profile-page letterboxd-style lb-route-page';
             page.innerHTML = '<div class="social-profile-container letterboxd"><div class="profile-loading-spinner"><div class="spinner"></div><span>' + RatingsPlugin.t('loadingProfile') + '</span></div></div>';
             try { page.setAttribute('data-bg', localStorage.getItem('lbProfileBg') || 'aurora'); } catch (e) { page.setAttribute('data-bg', 'aurora'); }
             document.body.appendChild(page);
 
-            // Lock the background page from scrolling while the profile is open.
-            self._prevBodyOverflow = document.body.style.overflow;
-            self._prevHtmlOverflow = document.documentElement.style.overflow;
-            document.body.style.overflow = 'hidden';
-            document.documentElement.style.overflow = 'hidden';
-
-            // Close when clicking backdrop (outside container)
-            page.addEventListener('click', function(e) {
-                if (e.target === page) {
-                    self.closeProfilePage();
-                }
-            });
+            // A full routed page, not a floating modal: the same layout community and curation use,
+            // so Jellyfin's app bar stays and the content area is replaced.
+            self.applyRoutePageLayout();
+            self.lockRoutePageScroll();
+            self.setHeaderDocumentTitle(self.t('loadingProfile'));
 
             // Fetch all profile data
             Promise.all([
@@ -5102,6 +5100,7 @@
             if (!container) return;
 
             var username = profile.username || 'Unknown';
+            self.setHeaderDocumentTitle(username);
             var initial = username[0].toUpperCase();
             var bio = profile.bio || '';
             var memberSince = profile.createdAt ? new Date(profile.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '';
@@ -5155,19 +5154,23 @@
                     headerBgInner = '<img class="lb-header-media" src="' + self.escapeHtml(headerSrc) + '" alt="" />';
                 }
             }
-            html += '<div class="lb-profile-header' + (headerMediaUrl ? ' has-media' : '') + '">' +
+            // Stat-led header, the same shape as community and curation: the rating count is the
+            // anchor, then the identity, then the actions.
+            html += '<div class="lb-page-header lb-header-stat lb-header-stat-profile' + (headerMediaUrl ? ' has-media' : '') + '">' +
                 '<div class="lb-header-bg">' + headerBgInner + '</div>' +
-                '<div class="lb-header-content">' +
-                '<div class="lb-avatar">' + avatarInner + '<span class="lb-status-dot ' + statusClass + '"></span></div>' +
+                '<div class="lb-ph-num"><b id="profileHeaderCount">' + (stats.ratingsCount || 0) + '</b><span>' + self.t('ratings') + '</span></div>' +
+                '<div class="lb-ph-div"></div>' +
+                '<div class="lb-ph-identity">' +
+                '<div class="lb-avatar lb-avatar-sm">' + avatarInner + '<span class="lb-status-dot ' + statusClass + '"></span></div>' +
                 '<div class="lb-user-info">' +
                 '<h1 class="lb-username">' + self.escapeHtml(username) + '</h1>' +
                 (bio ? '<p class="lb-bio">' + self.escapeHtml(bio) + '</p>' : '') +
                 '<div class="lb-meta">' +
                 '<span class="lb-status-text ' + statusClass + '">' + statusText + '</span>' +
                 (memberSince ? '<span class="lb-joined">' + self.t('memberSince') + ' ' + memberSince + '</span>' : '') +
-                '</div></div>' +
+                '</div></div></div>' +
                 '<div class="lb-header-actions">' + self.buildProfileActions(profile, status) + '</div>' +
-                '</div></div>';
+                '</div>';
 
             // Stats bar (Letterboxd style)
             html += '<div class="lb-stats-bar">' +
@@ -8607,9 +8610,9 @@
                 self._matchClockTimer = null;
             }
 
-            // Restore background page scrolling.
-            document.body.style.overflow = self._prevBodyOverflow || '';
-            document.documentElement.style.overflow = self._prevHtmlOverflow || '';
+            // Hand the content area and scrolling back, unless another route page is still open.
+            self.clearRoutePageLayout();
+            self.unlockRoutePageScroll();
 
             // Unregister as viewer
             if (self._viewingProfileUserId) {
@@ -8738,19 +8741,11 @@
         pageHeaderHtml: function (page, title, subtitle, countLabel) {
             var self = this;
             var countId = page + 'HeaderCount';
-            var text = '<div class="lb-ph-text"><h1>' + self.escapeHtml(title) + '</h1><p>' + self.escapeHtml(subtitle) + '</p></div>';
-            var big = '<div class="lb-ph-big"><b id="' + countId + '">—</b><small>' + self.escapeHtml(countLabel) + '</small></div>';
-            if (self.headerStyleCurrent() === 'stat') {
-                return '<div class="lb-page-header lb-header-stat">' +
-                    '<div class="lb-ph-num"><b id="' + countId + '">—</b><span>' + self.escapeHtml(countLabel) + '</span></div>' +
-                    '<div class="lb-ph-div"></div>' +
-                    text +
-                    '</div>';
-            }
-            if (self.headerStyleCurrent() === 'neon') {
-                return '<div class="lb-page-header lb-header-neon">' + text + big + '</div>';
-            }
-            return '<div class="lb-page-header lb-header-hero">' + text + big + '</div>';
+            return '<div class="lb-page-header lb-header-stat">' +
+                '<div class="lb-ph-num"><b id="' + countId + '">—</b><span>' + self.escapeHtml(countLabel) + '</span></div>' +
+                '<div class="lb-ph-div"></div>' +
+                '<div class="lb-ph-text"><h1>' + self.escapeHtml(title) + '</h1><p>' + self.escapeHtml(subtitle) + '</p></div>' +
+                '</div>';
         },
 
         /** Redraw the curation header in place (after a style change or once stats arrive). */
@@ -8775,6 +8770,18 @@
             if (el && value != null) {
                 el.textContent = String(value);
             }
+        },
+
+        /** Set the document title in Jellyfin's "<label> - <server>" shape. */
+        setHeaderDocumentTitle: function (label) {
+            var name = '';
+            try {
+                var info = ApiClient.serverInfo && ApiClient.serverInfo();
+                name = (info && (info.ServerName || info.serverName || info.Name)) || '';
+            } catch (e) {
+                // A missing server name is not worth a broken title over.
+            }
+            document.title = name ? (label + ' - ' + name) : label;
         },
 
         /**
@@ -8848,7 +8855,7 @@
          */
         clearRoutePageLayout: function () {
             var self = this;
-            if (document.getElementById('communityPage') || document.getElementById('curationPage')) {
+            if (document.getElementById('communityPage') || document.getElementById('curationPage') || document.getElementById('socialProfilePage')) {
                 return;
             }
             document.body.classList.remove('lb-route-page-open');
@@ -8874,7 +8881,7 @@
 
         /** Release the scroll lock once no route page is left. */
         unlockRoutePageScroll: function () {
-            if (document.getElementById('communityPage') || document.getElementById('curationPage')) {
+            if (document.getElementById('communityPage') || document.getElementById('curationPage') || document.getElementById('socialProfilePage')) {
                 return;
             }
             this._routePageScrollLocked = false;
@@ -8947,7 +8954,6 @@
                             self.t('back') +
                         '</div>' +
                         '<div class="lb-toolbar-actions">' +
-                            self.headerSwitchHtml() +
                             '<button type="button" class="lb-toolbar-btn" onclick="RatingsPlugin.loadCommunityPage()" title="' + self.t('refresh') + '">⟳</button>' +
                         '</div>' +
                     '</div>' +
@@ -9106,7 +9112,6 @@
                             self.t('back') +
                         '</div>' +
                         '<div class="lb-toolbar-actions">' +
-                            self.headerSwitchHtml() +
                             '<button type="button" class="lb-toolbar-btn" onclick="RatingsPlugin.loadCurationPage()" title="' + self.t('refresh') + '">⟳</button>' +
                         '</div>' +
                     '</div>' +
@@ -9259,39 +9264,47 @@
             var base = ApiClient.serverAddress();
             var uid = ApiClient.getCurrentUserId();
             var headers = { 'Authorization': self.authHeader(), 'Content-Type': 'application/json' };
-            var name = 'Watch later';
 
-            fetch(base + '/Items?userId=' + uid + '&IncludeItemTypes=Playlist&Recursive=true&SortBy=SortName', { headers: headers })
-                .then(function (r) { return r.ok ? r.json() : { Items: [] }; })
-                .then(function (data) {
-                    var lists = (data && data.Items) || [];
-                    var existing = lists.filter(function (l) {
-                        var media = String(l.MediaType || 'Video').toLowerCase();
-                        return media === 'video' && /watch ?later|watchlist/i.test(l.Name || '');
-                    })[0];
-                    if (existing) {
-                        return existing.Id;
-                    }
-                    return fetch(base + '/Playlists', {
-                        method: 'POST',
-                        headers: headers,
-                        body: JSON.stringify({ Name: name, Ids: [], MediaType: 'Video' })
-                    }).then(function (r) { return r.ok ? r.json() : null; }).then(function (d) { return d && d.Id; });
+            // The playlist is named after the caller, e.g. "Maikel Watchlist".
+            fetch(base + '/Users/Me', { headers: headers })
+                .then(function (r) { return r.ok ? r.json() : null; })
+                .then(function (me) {
+                    var userName = (me && (me.Name || me.name)) ? String(me.Name || me.name) : '';
+                    var name = (userName ? userName.charAt(0).toUpperCase() + userName.slice(1) : 'My') + ' Watchlist';
+                    return fetch(base + '/Items?userId=' + uid + '&IncludeItemTypes=Playlist&Recursive=true&SortBy=SortName', { headers: headers })
+                        .then(function (r) { return r.ok ? r.json() : { Items: [] }; })
+                        .then(function (data) {
+                            var lists = (data && data.Items) || [];
+                            var existing = lists.filter(function (l) {
+                                var media = String(l.MediaType || 'Video').toLowerCase();
+                                return media === 'video' && String(l.Name || '').toLowerCase() === name.toLowerCase();
+                            })[0];
+                            if (existing) {
+                                return { Id: existing.Id, name: name };
+                            }
+                            return fetch(base + '/Playlists', {
+                                method: 'POST',
+                                headers: headers,
+                                body: JSON.stringify({ Name: name, Ids: [], MediaType: 'Video' })
+                            }).then(function (r) { return r.ok ? r.json() : null; })
+                                .then(function (d) { return d && d.Id ? { Id: d.Id, name: name } : null; });
+                        });
                 })
-                .then(function (listId) {
-                    if (!listId) {
+                .then(function (target) {
+                    if (!target || !target.Id) {
                         throw new Error('no playlist');
                     }
-                    return fetch(base + '/Playlists/' + listId + '/Items?ids=' + encodeURIComponent(id) + '&userId=' + uid, {
+                    return fetch(base + '/Playlists/' + target.Id + '/Items?ids=' + encodeURIComponent(id) + '&userId=' + uid, {
                         method: 'POST',
                         headers: headers
                     }).then(function (r) {
                         if (!r.ok) {
                             throw new Error('add failed ' + r.status);
                         }
+                        return target.name;
                     });
                 })
-                .then(function () { self.curationToast(self.t('curationPlaylistAdded')); })
+                .then(function (name) { self.curationToast(self.t('curationPlaylistAdded') + ' “' + name + '”'); })
                 .catch(function () { self.curationToast(self.t('curationPlaylistFailed')); });
         },
 
