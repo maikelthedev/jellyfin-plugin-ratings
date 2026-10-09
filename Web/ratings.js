@@ -26,6 +26,7 @@
         _communityOpen: false, // Whether the community route page is rendered
         _communityInitialLoad: false, // Whether the route was the one the client loaded on
         _communityEntryViaLoad: false, // A legacy deep link normalised on first load
+        headerStyle: null, // Routed-page header look: 'hero' (3), 'stat' (4) or 'neon' (10)
         _initialRouteCheck: false, // True only during the first onPageChange()
         _routePageResizeHandler: null, // Re-measures the app bar while a route page is open
         _routePageScrollLocked: false, // Whether a route page locked the body scroll
@@ -162,6 +163,7 @@
                 watchRateReview: 'Watch, rate & review', addToPlaylist: 'Add to my playlist',
                 curationPlaylistAdded: 'Added to Watch later', curationPlaylistFailed: 'Could not add to your playlist',
                 yourRating: 'Your rating', curationRated: 'Rated', curationRateFailed: 'Could not save your rating',
+                headerStyle: 'Header style', toReview: 'to review',
                 shuffle: 'Shuffle', shuffleHint: "Don't like this? Try again",
                 previous: 'Previous', next: 'Next', page: 'Page',
                 latestCommented: 'Latest Commented', mostCommented: 'Most Commented',
@@ -8681,6 +8683,101 @@
         },
 
         /**
+         * The routed-page header look, shared by community and curation: three of the ten designs
+         * explored on i9laptop - 'hero' (3), 'stat' (4) and 'neon' (10). The choice is remembered.
+         *
+         * @returns {string} One of 'hero', 'stat', 'neon'.
+         */
+        headerStyleCurrent: function () {
+            if (!this.headerStyle) {
+                var saved = null;
+                try { saved = localStorage.getItem('lbHeaderStyle'); } catch (e) { /* ignore */ }
+                this.headerStyle = (saved === 'stat' || saved === 'neon') ? saved : 'hero';
+            }
+            return this.headerStyle;
+        },
+
+        /** The small segmented control that switches the header look. */
+        headerSwitchHtml: function () {
+            var self = this;
+            var cur = self.headerStyleCurrent();
+            var options = [['hero', '3'], ['stat', '4'], ['neon', '10']];
+            return '<div class="lb-header-switch" title="' + self.escapeHtml(self.t('headerStyle')) + '">' +
+                options.map(function (o) {
+                    return '<button type="button" class="lb-header-switch-btn' + (cur === o[0] ? ' active' : '') +
+                        '" data-style="' + o[0] + '" onclick="RatingsPlugin.setHeaderStyle(\'' + o[0] + '\')">' + o[1] + '</button>';
+                }).join('') +
+                '</div>';
+        },
+
+        /**
+         * Remember the chosen header look and redraw it wherever it is on screen.
+         *
+         * @param {string} style 'hero', 'stat' or 'neon'.
+         */
+        setHeaderStyle: function (style) {
+            if (style !== 'hero' && style !== 'stat' && style !== 'neon') { return; }
+            this.headerStyle = style;
+            try { localStorage.setItem('lbHeaderStyle', style); } catch (e) { /* ignore */ }
+            this.renderCurationHeader();
+            this.renderCommunityHeader();
+            Array.prototype.forEach.call(document.querySelectorAll('.lb-header-switch-btn'), function (b) {
+                b.classList.toggle('active', b.getAttribute('data-style') === RatingsPlugin.headerStyleCurrent());
+            });
+        },
+
+        /**
+         * HTML for the current header look.
+         *
+         * @param {string} page 'curation' or 'community' (used for the count element id).
+         * @param {string} title Header title.
+         * @param {string} subtitle Header subtitle.
+         * @param {string} countLabel Label under the big number.
+         * @returns {string} Header HTML.
+         */
+        pageHeaderHtml: function (page, title, subtitle, countLabel) {
+            var self = this;
+            var countId = page + 'HeaderCount';
+            var text = '<div class="lb-ph-text"><h1>' + self.escapeHtml(title) + '</h1><p>' + self.escapeHtml(subtitle) + '</p></div>';
+            var big = '<div class="lb-ph-big"><b id="' + countId + '">—</b><small>' + self.escapeHtml(countLabel) + '</small></div>';
+            if (self.headerStyleCurrent() === 'stat') {
+                return '<div class="lb-page-header lb-header-stat">' +
+                    '<div class="lb-ph-num"><b id="' + countId + '">—</b><span>' + self.escapeHtml(countLabel) + '</span></div>' +
+                    '<div class="lb-ph-div"></div>' +
+                    text +
+                    '</div>';
+            }
+            if (self.headerStyleCurrent() === 'neon') {
+                return '<div class="lb-page-header lb-header-neon">' + text + big + '</div>';
+            }
+            return '<div class="lb-page-header lb-header-hero">' + text + big + '</div>';
+        },
+
+        /** Redraw the curation header in place (after a style change or once stats arrive). */
+        renderCurationHeader: function () {
+            var root = document.getElementById('curationHeaderRoot');
+            if (!root) { return; }
+            root.innerHTML = this.pageHeaderHtml('curation', this.t('curation'), this.t('curationSubtitle'), this.t('toReview'));
+            this.setHeaderCount('curation', this._curationTotal);
+        },
+
+        /** Redraw the community header in place. */
+        renderCommunityHeader: function () {
+            var root = document.getElementById('communityHeaderRoot');
+            if (!root) { return; }
+            root.innerHTML = this.pageHeaderHtml('community', this.t('community'), this.t('communitySubtitle'), this.t('ratings'));
+            this.setHeaderCount('community', this._communityTotal);
+        },
+
+        /** Put a number on the header's big count, if the header is on screen. */
+        setHeaderCount: function (page, value) {
+            var el = document.getElementById(page + 'HeaderCount');
+            if (el && value != null) {
+                el.textContent = String(value);
+            }
+        },
+
+        /**
          * True when the URL asks for the community page.
          *
          * The page has its own route - #/community - so it survives a reload, can be copied out
@@ -8850,25 +8947,11 @@
                             self.t('back') +
                         '</div>' +
                         '<div class="lb-toolbar-actions">' +
+                            self.headerSwitchHtml() +
                             '<button type="button" class="lb-toolbar-btn" onclick="RatingsPlugin.loadCommunityPage()" title="' + self.t('refresh') + '">⟳</button>' +
                         '</div>' +
                     '</div>' +
-                    '<div class="lb-profile-header">' +
-                        '<div class="lb-header-content">' +
-                            '<div class="lb-avatar">' +
-                                // A community has no user picture of its own, so it stands in the
-                                // server's login splashscreen when one is set. The people icon sits
-                                // behind it and shows through when there is none (the image hides
-                                // itself on a 404 through the delegated .plugin-img-fallback).
-                                '<svg viewBox="0 0 24 24" width="54" height="54" fill="currentColor"><path d="M16 11c1.66 0 2.99-1.34 2.99-3S17.66 5 16 5c-1.66 0-3 1.34-3 3s1.34 3 3 3zm-8 0c1.66 0 2.99-1.34 2.99-3S9.66 5 8 5C6.34 5 5 6.34 5 8s1.34 3 3 3zm0 2c-2.33 0-7 1.17-7 3.5V19h14v-2.5c0-2.33-4.67-3.5-7-3.5zm8 0c-.29 0-.62.02-.97.05 1.16.84 1.97 1.97 1.97 3.45V19h6v-2.5c0-2.33-4.67-3.5-7-3.5z"/></svg>' +
-                                '<img class="lb-avatar-img plugin-img-fallback" src="' + self.escapeHtml(ApiClient.serverAddress() + '/Branding/Splashscreen') + '" alt="" />' +
-                            '</div>' +
-                            '<div class="lb-user-info">' +
-                                '<h1 class="lb-username">' + self.escapeHtml(self.t('community')) + '</h1>' +
-                                '<p class="lb-bio">' + self.escapeHtml(self.t('communitySubtitle')) + '</p>' +
-                            '</div>' +
-                        '</div>' +
-                    '</div>' +
+                    '<div id="communityHeaderRoot">' + self.pageHeaderHtml('community', self.t('community'), self.t('communitySubtitle'), self.t('ratings')) + '</div>' +
                     '<div class="lb-stats-bar" id="communityStats"></div>' +
                     '<div class="lb-content">' +
                         '<div class="lb-overview lb-grid">' +
@@ -9023,28 +9106,11 @@
                             self.t('back') +
                         '</div>' +
                         '<div class="lb-toolbar-actions">' +
+                            self.headerSwitchHtml() +
                             '<button type="button" class="lb-toolbar-btn" onclick="RatingsPlugin.loadCurationPage()" title="' + self.t('refresh') + '">⟳</button>' +
                         '</div>' +
                     '</div>' +
-                    '<div class="lb-profile-header">' +
-                        '<div class="lb-header-content">' +
-                            '<div class="lb-avatar">' +
-                                // The curation logo: a magnifying glass over a question mark - "what should
-                                // I watch next?" - with the plugin's gold sparkle. Drawn inline so there
-                                // is no external image to hotlink or licence.
-                                '<svg viewBox="0 0 64 64" width="56" height="56" aria-hidden="true">' +
-                                    '<circle cx="26" cy="26" r="15" fill="none" stroke="#ffffff" stroke-width="5"/>' +
-                                    '<line x1="37" y1="37" x2="50" y2="50" stroke="#ffffff" stroke-width="6" stroke-linecap="round"/>' +
-                                    '<text x="26" y="34" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="20" font-weight="700" fill="#ffd54a">?</text>' +
-                                    '<path d="M50 8l1.9 4.8 4.8 1.9-4.8 1.9L50 21.4l-1.9-4.8-4.8-1.9 4.8-1.9z" fill="#ffd54a"/>' +
-                                '</svg>' +
-                            '</div>' +
-                            '<div class="lb-user-info">' +
-                                '<h1 class="lb-username">' + self.escapeHtml(self.t('curation')) + '</h1>' +
-                                '<p class="lb-bio">' + self.escapeHtml(self.t('curationSubtitle')) + '</p>' +
-                            '</div>' +
-                        '</div>' +
-                    '</div>' +
+                    '<div id="curationHeaderRoot">' + self.pageHeaderHtml('curation', self.t('curation'), self.t('curationSubtitle'), self.t('toReview')) + '</div>' +
                     '<div class="lb-stats-bar" id="curationStats"></div>' +
                     '<div class="lb-content">' +
                         '<div class="lb-curation-controls">' +
@@ -9141,6 +9207,8 @@
         /** The one-line total above the grid. */
         renderCurationStats: function (total) {
             var self = this;
+            self._curationTotal = total == null ? 0 : total;
+            self.setHeaderCount('curation', self._curationTotal);
             var el = document.getElementById('curationStats');
             if (!el) return;
             var label = self._curationScope === 'me' ? self.t('notReviewedByYou') : self.t('neverReviewed');
@@ -9453,6 +9521,8 @@
             if (!el) return;
 
             self.communityFetch('/Ratings/Stats').then(function (stats) {
+                self._communityTotal = stats.TotalRatings == null ? 0 : stats.TotalRatings;
+                self.setHeaderCount('community', self._communityTotal);
                 if (!document.getElementById('communityStats')) return;
                 var cards = [
                     [stats.TotalRatings, self.t('ratings')],

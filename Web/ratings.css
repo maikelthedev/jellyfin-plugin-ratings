@@ -9071,6 +9071,44 @@ body.lb-route-page-open #reactRoot main > * {
     50% { transform: scale(1.05); box-shadow: 0 0 20px 4px rgba(0,224,84,.55); }
 }
 @media (prefers-reduced-motion: reduce) { .lb-curation-shuffle { animation: none; } }
+/* Routed-page header looks, switchable from the toolbar (3 = hero, 4 = stat, 10 = neon). */
+.lb-header-switch { display: inline-flex; background: #1a212a; border: 1px solid #2c3440; border-radius: 9px; overflow: hidden; margin-right: 4px; }
+.lb-header-switch-btn { background: transparent; border: 0; color: #9ab0c3; padding: 7px 11px; font-size: 12px; font-weight: 700; cursor: pointer; transition: background .15s, color .15s; }
+.lb-header-switch-btn:hover { color: #fff; }
+.lb-header-switch-btn.active { background: #00e054; color: #14181c; }
+
+.lb-page-header { margin: 0 0 18px; }
+.lb-page-header h1 { margin: 0; font-weight: 800; letter-spacing: -.01em; }
+.lb-page-header p { margin: 6px 0 0; color: #9ab0c3; font-size: 14px; }
+
+/* 3 — gradient hero banner */
+.lb-header-hero { position: relative; overflow: hidden; display: flex; align-items: center; justify-content: space-between; gap: 24px; padding: 26px 28px; border-radius: 18px; background: linear-gradient(120deg, #0f2419 0%, #12243a 55%, #1b1330 100%); border: 1px solid #21402f; }
+.lb-header-hero::after { content: ""; position: absolute; right: -40px; top: -60px; width: 220px; height: 220px; border-radius: 50%; background: radial-gradient(circle, rgba(0,224,84,.35), transparent 65%); }
+.lb-header-hero .lb-ph-text { position: relative; z-index: 1; min-width: 0; }
+.lb-header-hero h1 { font-size: 34px; color: #fff; }
+
+/* 4 — stat-led */
+.lb-header-stat { display: flex; align-items: center; gap: 26px; padding: 18px 2px; border-bottom: 1px solid #2c3440; }
+.lb-header-stat h1 { font-size: 28px; color: #fff; }
+.lb-ph-num { text-align: center; flex: 0 0 auto; }
+.lb-ph-num b { display: block; font-size: 46px; font-weight: 800; line-height: .9; color: #00e054; letter-spacing: -.03em; }
+.lb-ph-num span { font-size: 11px; letter-spacing: .14em; text-transform: uppercase; color: #9ab0c3; }
+.lb-ph-div { width: 1px; align-self: stretch; background: #2c3440; }
+
+/* 10 — neon glow */
+.lb-header-neon { position: relative; display: flex; align-items: center; justify-content: space-between; gap: 24px; padding: 24px 28px; border-radius: 16px; background: #0d1117; overflow: hidden; }
+.lb-header-neon::before { content: ""; position: absolute; inset: -2px; border-radius: 18px; background: conic-gradient(from 0deg, #00e054, #40bcf4, #a855f7, #ffd54a, #00e054); animation: lbHeaderSpin 6s linear infinite; z-index: 0; }
+.lb-header-neon::after { content: ""; position: absolute; inset: 1px; border-radius: 15px; background: #0d1117; z-index: 1; }
+.lb-header-neon .lb-ph-text, .lb-header-neon .lb-ph-big { position: relative; z-index: 2; }
+.lb-header-neon h1 { font-size: 32px; background: linear-gradient(90deg, #00e054, #40bcf4); -webkit-background-clip: text; background-clip: text; color: transparent; }
+@keyframes lbHeaderSpin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .lb-header-neon::before { animation: none; } }
+
+/* Big count shared by hero and neon. */
+.lb-ph-big { position: relative; z-index: 1; text-align: center; flex: 0 0 auto; }
+.lb-ph-big b { display: block; font-size: 38px; font-weight: 800; color: #fff; line-height: 1; }
+.lb-ph-big small { font-size: 10px; letter-spacing: .14em; text-transform: uppercase; color: #8fd9ae; }
+
 .lb-curation-list { display: flex; flex-direction: column; gap: 16px; }
 .lb-curation-card {
     display: flex;
