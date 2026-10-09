@@ -1985,6 +1985,48 @@ namespace Jellyfin.Plugin.Ratings.Api
         }
 
         /// <summary>
+        /// A human name for an item. Ratings now live on a season, whose own name ("Season 1") says
+        /// nothing about the show, so the series is prefixed: "Season 1: The Show".
+        /// </summary>
+        /// <param name="item">The item a rating is stored against.</param>
+        /// <returns>The name to display.</returns>
+        private static string DisplayName(MediaBrowser.Controller.Entities.BaseItem? item)
+        {
+            if (item == null)
+            {
+                return "Unknown";
+            }
+
+            if (item is MediaBrowser.Controller.Entities.TV.Season season && !string.IsNullOrWhiteSpace(season.SeriesName))
+            {
+                return season.Name + ": " + season.SeriesName;
+            }
+
+            return item.Name;
+        }
+
+        /// <summary>
+        /// A poster URL for an item, falling back to the series when the item (a season) has none -
+        /// /Items/&lt;season&gt;/Images/Primary is a hard 404, so the card would be blank.
+        /// </summary>
+        /// <param name="item">The item a rating is stored against.</param>
+        /// <returns>The image URL, or null when there is none.</returns>
+        private static string? DisplayImageUrl(MediaBrowser.Controller.Entities.BaseItem item)
+        {
+            if (item.ImageInfos?.Any(i => i.Type == MediaBrowser.Model.Entities.ImageType.Primary) == true)
+            {
+                return $"/Items/{item.Id}/Images/Primary";
+            }
+
+            if (item is MediaBrowser.Controller.Entities.TV.Season season && season.SeriesId != Guid.Empty)
+            {
+                return $"/Items/{season.SeriesId}/Images/Primary";
+            }
+
+            return null;
+        }
+
+        /// <summary>
         /// Whether a show is a vertical (9:16) production, decided from its video: a portrait frame,
         /// taller than it is wide. That is what makes the season - not the two-minute episode - the
         /// reviewable unit. A series or season has no stream of its own, so its first episode is probed.
@@ -6821,7 +6863,8 @@ namespace Jellyfin.Plugin.Ratings.Api
                         UserId = rating.UserId.ToString("N"),
                         UserName = user?.Username ?? "Unknown",
                         ItemId = rating.ItemId.ToString("N"),
-                        ItemName = item?.Name ?? "Unknown",
+                        ItemName = DisplayName(item),
+                        ImageUrl = item != null ? DisplayImageUrl(item) : null,
                         Rating = rating.Rating,
                         ReviewPreview = hasReview ? (rating.ReviewText!.Length > 80 ? rating.ReviewText.Substring(0, 80) + "..." : rating.ReviewText) : null,
                         Timestamp = rating.UpdatedAt
@@ -6866,7 +6909,8 @@ namespace Jellyfin.Plugin.Ratings.Api
                         UserId = comment.CommenterId.ToString("N"),
                         UserName = commenter?.Username ?? "Unknown",
                         ItemId = comment.ItemId.ToString("N"),
-                        ItemName = item?.Name ?? "Unknown",
+                        ItemName = DisplayName(item),
+                        ImageUrl = item != null ? DisplayImageUrl(item) : null,
                         TargetUserName = reviewer?.Username ?? "Unknown",
                         CommentPreview = comment.Text.Length > 80 ? comment.Text.Substring(0, 80) + "..." : comment.Text,
                         Timestamp = comment.CreatedAt
@@ -6895,6 +6939,7 @@ namespace Jellyfin.Plugin.Ratings.Api
             public string UserName { get; set; } = string.Empty;
             public string? ItemId { get; set; }
             public string ItemName { get; set; } = string.Empty;
+            public string? ImageUrl { get; set; }
             public double? Rating { get; set; }
             public string? ReviewPreview { get; set; }
             public string? RequestType { get; set; }
@@ -6943,16 +6988,14 @@ namespace Jellyfin.Plugin.Ratings.Api
                     var mediaItem = _libraryManager.GetItemById(item.Key);
                     if (mediaItem == null) continue;
 
-                    var hasImage = mediaItem.ImageInfos?.Any(i => i.Type == MediaBrowser.Model.Entities.ImageType.Primary) == true;
-
                     result.Add(new
                     {
-                        Id = item.Key.ToString("N"),
-                        Name = mediaItem.Name,
+                        Id = DisplayItemId(item.Key).ToString("N"),
+                        Name = DisplayName(mediaItem),
                         Year = mediaItem.ProductionYear,
                         AverageRating = item.Value.AverageRating,
                         TotalRatings = item.Value.RatingCount,
-                        ImageUrl = hasImage ? $"/Items/{item.Key}/Images/Primary" : null
+                        ImageUrl = DisplayImageUrl(mediaItem)
                     });
                 }
 
@@ -7014,17 +7057,15 @@ namespace Jellyfin.Plugin.Ratings.Api
                         var mediaItem = _libraryManager.GetItemById(entry.ItemId);
                         if (mediaItem == null) continue;
 
-                        var hasImage = mediaItem.ImageInfos?.Any(i => i.Type == MediaBrowser.Model.Entities.ImageType.Primary) == true;
-
                         result.Add(new
                         {
-                            Id = entry.ItemId.ToString("N"),
-                            Name = mediaItem.Name,
+                            Id = DisplayItemId(entry.ItemId).ToString("N"),
+                            Name = DisplayName(mediaItem),
                             Year = mediaItem.ProductionYear,
                             AverageRating = entry.AverageRating,
                             TotalRatings = entry.TotalRatings,
                             ReviewCount = entry.ReviewCount,
-                            ImageUrl = hasImage ? $"/Items/{entry.ItemId}/Images/Primary" : null
+                            ImageUrl = DisplayImageUrl(mediaItem)
                         });
                     }
                 }
@@ -7205,14 +7246,12 @@ namespace Jellyfin.Plugin.Ratings.Api
                     var mediaItem = _libraryManager.GetItemById(r.ItemId);
                     if (mediaItem == null) continue;
 
-                    var hasImage = mediaItem.ImageInfos?.Any(i => i.Type == MediaBrowser.Model.Entities.ImageType.Primary) == true;
-
                     result.Add(new
                     {
-                        Id = r.ItemId.ToString("N"),
-                        Name = mediaItem.Name,
+                        Id = DisplayItemId(r.ItemId).ToString("N"),
+                        Name = DisplayName(mediaItem),
                         Year = mediaItem.ProductionYear,
-                        ImageUrl = hasImage ? $"/Items/{r.ItemId}/Images/Primary" : null
+                        ImageUrl = DisplayImageUrl(mediaItem)
                     });
                 }
 

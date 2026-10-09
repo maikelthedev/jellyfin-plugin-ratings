@@ -9869,8 +9869,11 @@
                     var review = fullText[(itemId + '|' + userId).toLowerCase()] ||
                         entry.ReviewPreview || entry.reviewPreview || '';
 
-                    var poster = itemId
-                        ? ' style="background-image:url(\'' + self.escapeHtml(baseUrl + '/Items/' + encodeURIComponent(itemId) + '/Images/Primary?maxHeight=180') + '\')"'
+                    // A season has no poster of its own (the feed sends the series one instead); the
+                    // item-id path is only the fallback when the feed gave no image.
+                    var posterPath = entry.ImageUrl || entry.imageUrl || (itemId ? '/Items/' + encodeURIComponent(itemId) + '/Images/Primary' : '');
+                    var poster = posterPath
+                        ? ' style="background-image:url(\'' + self.escapeHtml(baseUrl + posterPath + '?maxHeight=180') + '\')"'
                         : '';
                     var avatar = userId
                         ? self.escapeHtml(userName.charAt(0).toUpperCase()) +
