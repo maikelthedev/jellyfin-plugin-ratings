@@ -161,6 +161,7 @@
                 rateAndReview: 'Rate & review', noDescription: 'No description yet.',
                 watchRateReview: 'Watch, rate & review', addToPlaylist: 'Add to my playlist',
                 curationPlaylistAdded: 'Added to Watch later', curationPlaylistFailed: 'Could not add to your playlist',
+                yourRating: 'Your rating', curationRated: 'Rated', curationRateFailed: 'Could not save your rating',
                 shuffle: 'Shuffle', shuffleHint: "Don't like this? Try again",
                 previous: 'Previous', next: 'Next', page: 'Page',
                 latestCommented: 'Latest Commented', mostCommented: 'Most Commented',
@@ -9243,6 +9244,43 @@
             el._timer = setTimeout(function () { el.classList.remove('lb-curation-toast-show'); }, 2600);
         },
 
+        /** Paint the inline stars up to `upto`, for hover preview and current-state feedback. */
+        curationPaintStars: function (row, upto) {
+            Array.prototype.forEach.call(row.querySelectorAll('.lb-curation-star'), function (btn) {
+                btn.classList.toggle('on', Number(btn.getAttribute('data-value')) <= upto);
+            });
+        },
+
+        /**
+         * Save an inline rating for a curation title, so a title the caller has already seen can be
+         * rated without opening it. Same endpoint the rating editor uses.
+         *
+         * @param {string} id Item id.
+         * @param {number} value Rating 1-10.
+         */
+        curationRate: function (id, value) {
+            var self = this;
+            var base = ApiClient.serverAddress();
+            fetch(base + '/Ratings/Items/' + encodeURIComponent(id) + '/Rating?rating=' + value, {
+                method: 'POST',
+                credentials: 'include',
+                headers: { 'Authorization': self.authHeader() }
+            })
+                .then(function (r) {
+                    if (!r.ok) { throw new Error('HTTP ' + r.status); }
+                    return r.json().catch(function () { return {}; });
+                })
+                .then(function () {
+                    var row = document.querySelector('#curationGrid .lb-curation-stars[data-id="' + id + '"]');
+                    if (row) {
+                        row.setAttribute('data-rating', value);
+                        self.curationPaintStars(row, value);
+                    }
+                    self.curationToast(self.t('curationRated') + ' ' + value + '/10');
+                })
+                .catch(function () { self.curationToast(self.t('curationRateFailed')); });
+        },
+
         /**
          * The five titles on this page, each with its poster, description and tags, so the choice
          * of what to rate next is made from the actual content rather than a wall of covers.
@@ -9295,6 +9333,18 @@
                         ' src="' + self.escapeHtml(stream) + '"></video>'
                     : (posterUrl ? '<div class="lb-curation-video lb-curation-video-poster" style="background-image:url(\'' + self.escapeHtml(posterUrl) + '\')"></div>' : '');
 
+                // A seen-it-already title can be rated here, without opening it. The stars show the
+                // caller's own rating when they have one.
+                var myRating = Number(item.MyRating != null ? item.MyRating : (item.myRating || 0)) || 0;
+                var stars = '';
+                for (var s = 1; s <= 10; s++) {
+                    stars += '<button type="button" class="lb-curation-star' + (myRating >= s ? ' on' : '') + '" data-value="' + s + '" title="' + s + '/10">★</button>';
+                }
+                var starsHtml = '<div class="lb-curation-stars-wrap">' +
+                    '<span class="lb-curation-stars-label">' + self.escapeHtml(self.t('yourRating')) + '</span>' +
+                    '<div class="lb-curation-stars" data-id="' + self.escapeHtml(id) + '" data-rating="' + myRating + '">' + stars + '</div>' +
+                    '</div>';
+
                 return '<div class="lb-curation-card" data-id="' + self.escapeHtml(id) + '">' +
                     '<div class="lb-curation-card-player">' + badge + video + '</div>' +
                     '<div class="lb-curation-card-body">' +
@@ -9304,6 +9354,7 @@
                         '</div>' +
                         tagsHtml +
                         '<p class="lb-curation-desc">' + self.escapeHtml(overview || self.t('noDescription')) + '</p>' +
+                        starsHtml +
                         '<div class="lb-curation-card-actions">' +
                             '<button type="button" class="lb-curation-rate" onclick="RatingsPlugin.openMedia(\'' + self.escapeJs(id) + '\')">' + self.escapeHtml(self.t('watchRateReview')) + '</button>' +
                             '<button type="button" class="lb-curation-playlist" onclick="RatingsPlugin.curationAddToPlaylist(\'' + self.escapeJs(id) + '\')">＋ ' + self.escapeHtml(self.t('addToPlaylist')) + '</button>' +
@@ -9315,6 +9366,19 @@
             // Only one preview streams at a time: starting any card pauses the others.
             Array.prototype.forEach.call(grid.querySelectorAll('.lb-curation-video'), function (v) {
                 v.addEventListener('play', function () { self.curationPauseOthers(v); });
+            });
+
+            // Inline stars: hover previews, click saves.
+            Array.prototype.forEach.call(grid.querySelectorAll('.lb-curation-stars'), function (row) {
+                var id = row.getAttribute('data-id');
+                var current = Number(row.getAttribute('data-rating')) || 0;
+                Array.prototype.forEach.call(row.querySelectorAll('.lb-curation-star'), function (btn) {
+                    var value = Number(btn.getAttribute('data-value'));
+                    btn.addEventListener('mouseenter', function () { self.curationPaintStars(row, value); });
+                    btn.addEventListener('click', function () { self.curationRate(id, value); });
+                });
+                row.addEventListener('mouseleave', function () { self.curationPaintStars(row, Number(row.getAttribute('data-rating')) || 0); });
+                row.setAttribute('data-rating', current);
             });
         },
 

@@ -9157,6 +9157,21 @@ body.lb-route-page-open #reactRoot main > * {
     -webkit-box-orient: vertical;
     overflow: hidden;
 }
+.lb-curation-stars-wrap { display: flex; align-items: center; gap: 10px; margin-top: 12px; }
+.lb-curation-stars-label { font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: #8fa3b5; }
+.lb-curation-stars { display: inline-flex; gap: 2px; }
+.lb-curation-star {
+    background: transparent;
+    border: 0;
+    padding: 0 1px;
+    cursor: pointer;
+    font-size: 18px;
+    line-height: 1;
+    color: #3a4552;
+    transition: color .12s, transform .12s;
+}
+.lb-curation-star.on { color: #00e054; }
+.lb-curation-star:hover { transform: scale(1.15); }
 .lb-curation-card-actions { margin-top: auto; padding-top: 12px; display: flex; flex-wrap: wrap; gap: 10px; }
 .lb-curation-rate {
     background: #00e054;
