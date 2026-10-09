@@ -1704,8 +1704,13 @@ namespace Jellyfin.Plugin.Ratings.Api
                 var totalCount = unreviewed.Count;
 
                 // The caller may already have rated a title without reviewing it, so the card can
-                // show their stars and they can change them without opening the title.
+                // show their stars and they can change them without opening the title. Their review
+                // text, if any, drives the edit/share/delete affordances too.
                 var userRatings = _repository.GetUserRatingsMap(userId);
+                var userReviews = _repository.GetUserRatings(userId)
+                    .Where(r => !string.IsNullOrWhiteSpace(r.ReviewText))
+                    .GroupBy(r => r.ItemId)
+                    .ToDictionary(g => g.Key, g => g.First().ReviewText);
 
                 // A stable pseudo-random order: ordering by a per-id mix of the seed keeps every
                 // page consistent while the same seed is passed, and reshuffling is just a new seed.
@@ -1732,6 +1737,7 @@ namespace Jellyfin.Plugin.Ratings.Api
                             PremiereDate = item.PremiereDate,
                             DateCreated = item.DateCreated,
                             MyRating = userRatings.TryGetValue(item.Id, out var mine) ? mine : (double?)null,
+                            MyReview = userReviews.TryGetValue(item.Id, out var myReview) ? myReview : null,
                             PlayItemId = play.Id.ToString("N"),
                             PlayDirect = play.DirectPlay
                         };

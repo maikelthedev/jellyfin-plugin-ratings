@@ -163,6 +163,7 @@
                 watchRateReview: 'Watch, rate & review', addToPlaylist: 'Add to my playlist',
                 curationPlaylistAdded: 'Added to', curationPlaylistFailed: 'Could not add to your playlist',
                 yourRating: 'Your rating', curationRated: 'Rated', curationRateFailed: 'Could not save your rating',
+                addReview: 'Add review', editReview: 'Edit review', share: 'Share', removeRating: 'Remove',
                 headerStyle: 'Header style', toReview: 'to review',
                 shuffle: 'Shuffle', shuffleHint: "Don't like this? Try again",
                 previous: 'Previous', next: 'Next', page: 'Page',
@@ -4231,6 +4232,9 @@
                     : '') +
                 '</div>' +
                 '<div class="lb-settings-footer">' +
+                (isEdit && data.itemId && String(data.review || '').trim() && self.reviewsEnabled()
+                    ? '<button class="lb-btn-cancel" onclick="RatingsPlugin.shareReview(\'' + self.escapeJs(self.curationCurrentUserId()) + '\',\'' + self.escapeJs(data.itemId) + '\')">' + RatingsPlugin.t('share') + '</button>'
+                    : '') +
                 (isEdit && data.itemId
                     ? '<button class="lb-btn-danger" onclick="RatingsPlugin.removeRatingFromEditor()">' + RatingsPlugin.t('chatRemoveMod') + '</button>'
                     : '') +
@@ -4342,6 +4346,7 @@
                     self._profileRatings = null;
                     self._profileRatingsUser = null;
                     self.reloadRatingsTab();
+                    self.updateCurationCard(data.itemId, value, review);
                 })
                 .catch(function (err) {
                     console.error('[Ratings] Save failed:', err);
@@ -4473,6 +4478,7 @@
                     self._profileRatings = null;
                     self._profileRatingsUser = null;
                     self.reloadRatingsTab();
+                    self.updateCurationCard(itemId, 0, '');
                 })
                 .catch(function (err) {
                     // Say which failure it was: "could not remove" on its own gave nothing to go on.
@@ -9197,6 +9203,7 @@
             self.communityFetch(path).then(function (data) {
                 if (!document.getElementById('curationGrid')) return;
                 var items = (data && (data.items || data.Items)) || [];
+                self._curationItems = items;
                 var total = data && (data.totalCount != null ? data.totalCount : data.TotalCount);
                 self._curationTotalPages = (data && (data.totalPages || data.TotalPages)) || 1;
                 self._curationPage = (data && (data.page || data.Page)) || self._curationPage;
@@ -9333,6 +9340,78 @@
         },
 
         /**
+         * The "your rating" row: ten stars plus the add/edit/share/remove links, so the whole
+         * rating workflow (comment, edit, share, delete) is available from the curation card.
+         *
+         * @param {string} id Item id.
+         * @param {number} myRating The caller's rating, 0 when none.
+         * @param {string} myReview The caller's review text, '' when none.
+         * @returns {string} The row HTML.
+         */
+        curationStarsHtml: function (id, myRating, myReview) {
+            var self = this;
+            var rating = Number(myRating) || 0;
+            var review = myReview || '';
+            var stars = '';
+            for (var s = 1; s <= 10; s++) {
+                stars += '<button type="button" class="lb-curation-star' + (rating >= s ? ' on' : '') + '" data-value="' + s + '" title="' + s + '/10">★</button>';
+            }
+            var links = '<span class="lb-curation-rate-links">' +
+                '<a href="javascript:void(0)" onclick="RatingsPlugin.openCurationRating(\'' + self.escapeJs(id) + '\')">' + self.escapeHtml(rating ? self.t('editReview') : self.t('addReview')) + '</a>' +
+                (review ? '<a href="javascript:void(0)" onclick="RatingsPlugin.shareReview(\'' + self.escapeJs(self.curationCurrentUserId()) + '\',\'' + self.escapeJs(id) + '\')">' + self.escapeHtml(self.t('share')) + '</a>' : '') +
+                (rating ? '<a href="javascript:void(0)" class="danger" onclick="RatingsPlugin.removeCurationRating(\'' + self.escapeJs(id) + '\')">' + self.escapeHtml(self.t('removeRating')) + '</a>' : '') +
+                '</span>';
+            return '<div class="lb-curation-stars-wrap">' +
+                '<span class="lb-curation-stars-label">' + self.escapeHtml(self.t('yourRating')) + '</span>' +
+                '<div class="lb-curation-stars" data-id="' + self.escapeHtml(id) + '" data-rating="' + rating + '">' + stars + '</div>' +
+                links +
+                '</div>';
+        },
+
+        /** Attach hover/click behaviour to every inline star row not bound yet. */
+        bindCurationStars: function () {
+            var self = this;
+            Array.prototype.forEach.call(document.querySelectorAll('#curationGrid .lb-curation-stars'), function (row) {
+                if (row.getAttribute('data-bound') === '1') { return; }
+                row.setAttribute('data-bound', '1');
+                var id = row.getAttribute('data-id');
+                Array.prototype.forEach.call(row.querySelectorAll('.lb-curation-star'), function (btn) {
+                    var value = Number(btn.getAttribute('data-value'));
+                    btn.addEventListener('mouseenter', function () { self.curationPaintStars(row, value); });
+                    btn.addEventListener('click', function () { self.curationRate(id, value); });
+                });
+                row.addEventListener('mouseleave', function () { self.curationPaintStars(row, Number(row.getAttribute('data-rating')) || 0); });
+            });
+        },
+
+        /**
+         * Reflect a changed rating/review on a curation card in place, keeping the card (and its
+         * video) on screen. Deliberately does not refetch the page: a freshly reviewed title would
+         * drop straight out of the queue and take its Share link with it.
+         *
+         * @param {string} id Item id.
+         * @param {number} rating New rating, 0 to clear.
+         * @param {string} review New review text.
+         */
+        updateCurationCard: function (id, rating, review) {
+            var self = this;
+            var item = (self._curationItems || []).filter(function (i) { return (i.Id || i.id) === id; })[0];
+            if (item) {
+                item.MyRating = rating > 0 ? rating : null;
+                item.MyReview = review || null;
+            }
+            var row = document.querySelector('#curationGrid .lb-curation-stars[data-id="' + id + '"]');
+            var wrap = row ? row.closest('.lb-curation-stars-wrap') : null;
+            if (!wrap) {
+                return;
+            }
+            var holder = document.createElement('div');
+            holder.innerHTML = self.curationStarsHtml(id, rating, review);
+            wrap.parentNode.replaceChild(holder.firstElementChild, wrap);
+            self.bindCurationStars();
+        },
+
+        /**
          * Save an inline rating for a curation title, so a title the caller has already seen can be
          * rated without opening it. Same endpoint the rating editor uses.
          *
@@ -9352,14 +9431,50 @@
                     return r.json().catch(function () { return {}; });
                 })
                 .then(function () {
-                    var row = document.querySelector('#curationGrid .lb-curation-stars[data-id="' + id + '"]');
-                    if (row) {
-                        row.setAttribute('data-rating', value);
-                        self.curationPaintStars(row, value);
-                    }
+                    var item = (self._curationItems || []).filter(function (i) { return (i.Id || i.id) === id; })[0];
+                    var review = item ? (item.MyReview || item.myReview || '') : '';
+                    self.updateCurationCard(id, value, review);
                     self.curationToast(self.t('curationRated') + ' ' + value + '/10');
                 })
                 .catch(function () { self.curationToast(self.t('curationRateFailed')); });
+        },
+
+        /** The current user id, or '' - used to build share links. */
+        curationCurrentUserId: function () {
+            try { return ApiClient.getCurrentUserId(); } catch (e) { return ''; }
+        },
+
+        /**
+         * Open the full rating editor (stars + review + delete + share) for a curation title, so a
+         * comment can be written, edited, removed or shared without leaving the page.
+         *
+         * @param {string} id Curation item id.
+         */
+        openCurationRating: function (id) {
+            var self = this;
+            var item = (self._curationItems || []).filter(function (i) {
+                return (i.Id || i.id) === id;
+            })[0];
+            if (!item) {
+                return;
+            }
+            var rating = Number(item.MyRating != null ? item.MyRating : (item.myRating || 0)) || 0;
+            self.showExternalRatingModal({
+                itemId: id,
+                title: item.Name || item.name || '',
+                year: item.Year || item.year || '',
+                rating: rating,
+                review: item.MyReview || item.myReview || '',
+                inLib: true
+            }, rating > 0);
+        },
+
+        /** Remove the caller's rating for a curation title, with the usual confirmation. */
+        removeCurationRating: function (id) {
+            var item = (this._curationItems || []).filter(function (i) {
+                return (i.Id || i.id) === id;
+            })[0];
+            this.deleteRatingById(id, (item && (item.Name || item.name)) || '');
         },
 
         /**
@@ -9417,14 +9532,8 @@
                 // A seen-it-already title can be rated here, without opening it. The stars show the
                 // caller's own rating when they have one.
                 var myRating = Number(item.MyRating != null ? item.MyRating : (item.myRating || 0)) || 0;
-                var stars = '';
-                for (var s = 1; s <= 10; s++) {
-                    stars += '<button type="button" class="lb-curation-star' + (myRating >= s ? ' on' : '') + '" data-value="' + s + '" title="' + s + '/10">★</button>';
-                }
-                var starsHtml = '<div class="lb-curation-stars-wrap">' +
-                    '<span class="lb-curation-stars-label">' + self.escapeHtml(self.t('yourRating')) + '</span>' +
-                    '<div class="lb-curation-stars" data-id="' + self.escapeHtml(id) + '" data-rating="' + myRating + '">' + stars + '</div>' +
-                    '</div>';
+                var myReview = item.MyReview || item.myReview || '';
+                var starsHtml = self.curationStarsHtml(id, myRating, myReview);
 
                 return '<div class="lb-curation-card" data-id="' + self.escapeHtml(id) + '">' +
                     '<div class="lb-curation-card-player">' + badge + video + '</div>' +
@@ -9450,17 +9559,7 @@
             });
 
             // Inline stars: hover previews, click saves.
-            Array.prototype.forEach.call(grid.querySelectorAll('.lb-curation-stars'), function (row) {
-                var id = row.getAttribute('data-id');
-                var current = Number(row.getAttribute('data-rating')) || 0;
-                Array.prototype.forEach.call(row.querySelectorAll('.lb-curation-star'), function (btn) {
-                    var value = Number(btn.getAttribute('data-value'));
-                    btn.addEventListener('mouseenter', function () { self.curationPaintStars(row, value); });
-                    btn.addEventListener('click', function () { self.curationRate(id, value); });
-                });
-                row.addEventListener('mouseleave', function () { self.curationPaintStars(row, Number(row.getAttribute('data-rating')) || 0); });
-                row.setAttribute('data-rating', current);
-            });
+            self.bindCurationStars();
         },
 
         /** Previous / page x of y / next. Hidden while everything fits on one page. */
@@ -10027,7 +10126,18 @@
                 '<div class="cardBox cardBox-bottompadded">' +
                     '<div class="cardScalable">' +
                         '<div class="cardPadder cardPadder-overflowPortrait"></div>' +
-                        '<a class="cardImageContainer coveredImage cardContent itemAction ratings-curation-card" href="#/curation" aria-label="' + self.escapeHtml(self.t('curation')) + '" role="img"></a>' +
+                        '<a class="cardImageContainer coveredImage cardContent itemAction ratings-curation-card" href="#/curation" aria-label="' + self.escapeHtml(self.t('curation')) + '" role="img">' +
+                            // The same magnifying-glass-over-a-question-mark mark the page uses, so the
+                            // card reads as "what should I watch next?" rather than an abstract sparkle.
+                            '<span class="ratings-curation-logo" aria-hidden="true">' +
+                                '<svg viewBox="0 0 64 64">' +
+                                    '<circle cx="26" cy="26" r="15" fill="none" stroke="#ffffff" stroke-width="5"/>' +
+                                    '<line x1="37" y1="37" x2="50" y2="50" stroke="#ffffff" stroke-width="6" stroke-linecap="round"/>' +
+                                    '<text x="26" y="34" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="20" font-weight="700" fill="#ffd54a">?</text>' +
+                                    '<path d="M50 8l1.9 4.8 4.8 1.9-4.8 1.9L50 21.4l-1.9-4.8-4.8-1.9 4.8-1.9z" fill="#ffd54a"/>' +
+                                '</svg>' +
+                            '</span>' +
+                        '</a>' +
                     '</div>' +
                     '<div class="cardText cardTextCentered cardText-first"><bdi>' +
                         '<a class="itemAction textActionButton ratings-curation-card" href="#/curation">' + self.escapeHtml(self.t('curation').toUpperCase()) + '</a>' +
