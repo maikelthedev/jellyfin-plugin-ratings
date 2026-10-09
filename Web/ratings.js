@@ -10474,35 +10474,38 @@
          * Get item ID from URL
          */
         getItemIdFromUrl: function () {
-            // Try multiple URL patterns
+            // Jellyfin puts undashed ids in the URL, but a copied GUID arrives dashed. A dashed id
+            // used to be matched only up to its first dash, so /Ratings/Items/<8 chars>/Stats 400d
+            // and the rating widget on that page said "Error loading ratings".
             const url = window.location.href;
             const pathname = window.location.pathname;
             const hash = window.location.hash;
             const search = window.location.search;
-
+            const id = '([0-9a-f]{32}|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})';
+            const norm = function (m) { return m ? m[1].replace(/-/g, '') : null; };
 
             // Pattern 1: Hash-based routing (#!/details?id=...)
-            let match = hash.match(/[?&]id=([a-f0-9]+)/i);
+            let match = hash.match(new RegExp('[?&]id=' + id, 'i'));
             if (match) {
-                return match[1];
+                return norm(match);
             }
 
             // Pattern 2: Query string (?id=...)
-            match = search.match(/[?&]id=([a-f0-9]+)/i);
+            match = search.match(new RegExp('[?&]id=' + id, 'i'));
             if (match) {
-                return match[1];
+                return norm(match);
             }
 
             // Pattern 3: Path-based (/item/id or /details/id)
-            match = pathname.match(/\/(?:item|details)\/([a-f0-9]+)/i);
+            match = pathname.match(new RegExp('/(?:item|details)/' + id, 'i'));
             if (match) {
-                return match[1];
+                return norm(match);
             }
 
             // Pattern 4: Anywhere in URL
-            match = url.match(/[?&]id=([a-f0-9]{32})/i);
+            match = url.match(new RegExp('[?&]id=' + id, 'i'));
             if (match) {
-                return match[1];
+                return norm(match);
             }
 
             return null;

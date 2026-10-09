@@ -490,6 +490,7 @@ namespace Jellyfin.Plugin.Ratings.Api
 
                 // Batch fetch items from library manager and extract provider IDs
                 var itemsWithProviders = new List<(Guid ItemId, string? TmdbId, string? ImdbId, string? AniDbId)>();
+                var originalsByTarget = new Dictionary<Guid, List<Guid>>();
                 foreach (var id in ids)
                 {
                     var item = _libraryManager.GetItemById(id);
@@ -505,11 +506,33 @@ namespace Jellyfin.Plugin.Ratings.Api
                         item.ProviderIds.TryGetValue("AniDB", out aniDbId);
                     }
 
-                    itemsWithProviders.Add((item.Id, tmdbId, imdbId, aniDbId));
+                    // Ratings live on the season for a show (see ResolveRatingTarget), so ask about
+                    // that and re-key the answer back to the id the caller (a poster) used.
+                    var targetId = ResolveRatingTarget(item).Item.Id;
+                    itemsWithProviders.Add((targetId, tmdbId, imdbId, aniDbId));
+                    if (!originalsByTarget.TryGetValue(targetId, out var originals))
+                    {
+                        originals = new List<Guid>();
+                        originalsByTarget[targetId] = originals;
+                    }
+
+                    originals.Add(id);
                 }
 
                 // Use batch method - single lock acquisition for all items
-                var result = _repository.GetBatchRatingStats(itemsWithProviders, userId != Guid.Empty ? userId : null);
+                var byTarget = _repository.GetBatchRatingStats(itemsWithProviders, userId != Guid.Empty ? userId : null);
+
+                var result = new Dictionary<string, RatingStats>();
+                foreach (var kv in byTarget)
+                {
+                    if (Guid.TryParse(kv.Key, out var targetGuid) && originalsByTarget.TryGetValue(targetGuid, out var originals))
+                    {
+                        foreach (var original in originals)
+                        {
+                            result[original.ToString("N")] = kv.Value;
+                        }
+                    }
+                }
 
                 return Ok(result);
             }
@@ -1499,6 +1522,11 @@ namespace Jellyfin.Plugin.Ratings.Api
                         itemRatings = allRatings.ToDictionary(kv => kv.Key, kv => kv.Value.AverageRating);
                     }
 
+                    // Ratings are stored on a show's season (see ResolveRatingTarget), so a rating
+                    // listing has to show the show: fold every rated id back onto its series before
+                    // sorting and before the library filter (which holds series ids).
+                    itemRatings = RemapRatingsToShows(itemRatings);
+
                     // Filter by library if parentId was provided
                     if (libraryItemIds != null)
                     {
@@ -1932,6 +1960,22 @@ namespace Jellyfin.Plugin.Ratings.Api
                 }
             }
 
+            // A single-season show (every vertical drama) is reviewed on its season, which is what
+            // the season and episode pages both show. A multi-season show keeps its own item.
+            if (item is MediaBrowser.Controller.Entities.TV.Series seriesItem)
+            {
+                var seasons = _libraryManager.GetItemList(new MediaBrowser.Controller.Entities.InternalItemsQuery
+                {
+                    ParentId = seriesItem.Id,
+                    IncludeItemTypes = new[] { Jellyfin.Data.Enums.BaseItemKind.Season },
+                    Recursive = true
+                });
+                if (seasons.Count == 1)
+                {
+                    return (seasons[0], seriesItem.Name, "Series");
+                }
+            }
+
             return (item, item.Name, item is MediaBrowser.Controller.Entities.TV.Series ? "Series" : "Movie");
         }
 
@@ -1945,6 +1989,45 @@ namespace Jellyfin.Plugin.Ratings.Api
         {
             var item = _libraryManager.GetItemById(itemId);
             return item != null ? ResolveRatingTarget(item).Item.Id : itemId;
+        }
+
+        /// <summary>
+        /// The item to list a rating under. A rating is stored on a season (or episode) for a show,
+        /// so a rating-sorted listing shows the series rather than a bare "Season 1".
+        /// </summary>
+        /// <param name="ratingItemId">The id the rating is stored against.</param>
+        /// <returns>The series id to list it under, or the id unchanged.</returns>
+        private Guid DisplayItemId(Guid ratingItemId)
+        {
+            var item = _libraryManager.GetItemById(ratingItemId);
+            if (item is MediaBrowser.Controller.Entities.TV.Season season && season.SeriesId != Guid.Empty)
+            {
+                return season.SeriesId;
+            }
+
+            if (item is MediaBrowser.Controller.Entities.TV.Episode episode && episode.SeriesId != Guid.Empty)
+            {
+                return episode.SeriesId;
+            }
+
+            return ratingItemId;
+        }
+
+        /// <summary>
+        /// Folds season-stored ratings back onto their series for a rating-sorted listing.
+        /// </summary>
+        /// <param name="ratings">Ratings keyed by the id they are stored against.</param>
+        /// <returns>Ratings keyed by the series to list them under.</returns>
+        private Dictionary<Guid, double> RemapRatingsToShows(Dictionary<Guid, double> ratings)
+        {
+            var result = new Dictionary<Guid, double>();
+            foreach (var kv in ratings)
+            {
+                var displayId = DisplayItemId(kv.Key);
+                result[displayId] = result.TryGetValue(displayId, out var current) ? Math.Max(current, kv.Value) : kv.Value;
+            }
+
+            return result;
         }
 
         /// <summary>
