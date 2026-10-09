@@ -1634,6 +1634,269 @@ namespace Jellyfin.Plugin.Ratings.Api
         }
 
         /// <summary>
+        /// The curation queue: library titles that have not been reviewed yet, in a random but
+        /// stable order.
+        /// </summary>
+        /// <param name="scope">"all" (the default) for titles nobody has reviewed, "me" for titles the caller has not.</param>
+        /// <param name="page">1-based page number.</param>
+        /// <param name="limit">Items per page (1-200).</param>
+        /// <param name="seed">Random seed; the same seed keeps paging stable, a new seed reshuffles.</param>
+        /// <param name="parentId">Optional library (or grouped view) to restrict to.</param>
+        /// <returns>One page of unreviewed titles, plus the totals.</returns>
+        [HttpGet("Curation")]
+        [Authorize]
+        public async Task<ActionResult> GetCurationQueue(
+            [FromQuery] string scope = "all",
+            [FromQuery] int page = 1,
+            [FromQuery] int limit = 60,
+            [FromQuery] int seed = 0,
+            [FromQuery] string? parentId = null)
+        {
+            try
+            {
+                var userId = await GetAuthenticatedUserIdAsync().ConfigureAwait(false);
+                if (userId == Guid.Empty)
+                {
+                    return Unauthorized("User not authenticated");
+                }
+
+                // The user on the query is what makes Jellyfin apply this account's library
+                // permissions and expand a grouped view into its underlying folders.
+                var sortUser = _userManager.GetUserById(userId);
+
+                limit = Math.Clamp(limit, 1, 200);
+                page = Math.Max(1, page);
+
+                Guid? parentGuid = null;
+                if (!string.IsNullOrEmpty(parentId) && Guid.TryParse(parentId, out var parsedParentId))
+                {
+                    parentGuid = parsedParentId;
+                }
+
+                var query = new MediaBrowser.Controller.Entities.InternalItemsQuery
+                {
+                    User = sortUser,
+                    IncludeItemTypes = new[] { Jellyfin.Data.Enums.BaseItemKind.Movie, Jellyfin.Data.Enums.BaseItemKind.Series, Jellyfin.Data.Enums.BaseItemKind.MusicVideo },
+                    Recursive = true
+                };
+                if (parentGuid.HasValue)
+                {
+                    query.ParentId = parentGuid.Value;
+                }
+
+                var items = _libraryManager.GetItemList(query);
+
+                // "Reviewed" is a rating that carries review text, the same definition the stats,
+                // the activity feed and the review count use.
+                var perUserReviewed = string.Equals(scope, "me", StringComparison.OrdinalIgnoreCase);
+                HashSet<Guid> reviewed;
+                if (perUserReviewed)
+                {
+                    var byUser = _repository.GetReviewedItemIdsByUser();
+                    reviewed = byUser.TryGetValue(userId, out var mine) ? mine : new HashSet<Guid>();
+                }
+                else
+                {
+                    reviewed = _repository.GetReviewedItemIds();
+                }
+
+                var unreviewed = items.Where(i => !reviewed.Contains(i.Id)).ToList();
+                var totalCount = unreviewed.Count;
+
+                // A stable pseudo-random order: ordering by a per-id mix of the seed keeps every
+                // page consistent while the same seed is passed, and reshuffling is just a new seed.
+                var ordered = unreviewed
+                    .OrderBy(i => MixSeed(i.Id, seed))
+                    .Skip((page - 1) * limit)
+                    .Take(limit)
+                    .Select(item =>
+                    {
+                        var play = ResolvePlayTarget(item);
+                        return new
+                        {
+                            Id = item.Id.ToString("N"),
+                            Name = item.Name,
+                            Year = item.ProductionYear,
+                            Type = item is MediaBrowser.Controller.Entities.Movies.Movie ? "Movie" : (item is MediaBrowser.Controller.Entities.MusicVideo ? "MusicVideo" : "Series"),
+                            ImageUrl = item.ImageInfos?.Any(i => i.Type == MediaBrowser.Model.Entities.ImageType.Primary) == true
+                                ? $"/Items/{item.Id}/Images/Primary"
+                                : null,
+                            Overview = item.Overview,
+                            Genres = WithGenres(item),
+                            Tags = item.Tags,
+                            CommunityRating = item.CommunityRating,
+                            PremiereDate = item.PremiereDate,
+                            DateCreated = item.DateCreated,
+                            PlayItemId = play.Id.ToString("N"),
+                            PlayDirect = play.DirectPlay
+                        };
+                    })
+                    .Cast<object>()
+                    .ToList();
+
+                _logger.LogInformation(
+                    "Curation scope={Scope} user={UserId} page={Page} totalCount={TotalCount} returned={Returned}",
+                    perUserReviewed ? "me" : "all", userId, page, totalCount, ordered.Count);
+
+                return Ok(new
+                {
+                    items = ordered,
+                    totalCount,
+                    page,
+                    limit,
+                    totalPages = (int)Math.Ceiling((double)totalCount / limit),
+                    seed,
+                    scope = perUserReviewed ? "me" : "all"
+                });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error getting curation queue");
+                return StatusCode(500, "Internal server error");
+            }
+        }
+
+        /// <summary>
+        /// Genres for a library item, never empty when the item's tags name one.
+        ///
+        /// Short dramas frequently land with no metadata genre at all, while their tags already say
+        /// "Romance", "Werewolf", "Mafia" and so on. Those titles fell out of the genre chart and
+        /// showed no genre on the curation card, so a tag that is itself a genre stands in for one.
+        /// </summary>
+        /// <param name="item">Library item.</param>
+        /// <returns>The item's genres, or the genres named by its tags.</returns>
+        private static List<string> WithGenres(MediaBrowser.Controller.Entities.BaseItem item)
+        {
+            var genres = item.Genres?
+                .Where(g => !string.IsNullOrWhiteSpace(g))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList() ?? new List<string>();
+            if (genres.Count > 0)
+            {
+                return genres;
+            }
+
+            var derived = new List<string>();
+            if (item.Tags != null)
+            {
+                foreach (var tag in item.Tags)
+                {
+                    var lower = tag.ToLowerInvariant();
+                    foreach (var rule in TagGenreRules)
+                    {
+                        if (lower.Contains(rule.Keyword) && !derived.Contains(rule.Genre, StringComparer.OrdinalIgnoreCase))
+                        {
+                            derived.Add(rule.Genre);
+                            break;
+                        }
+                    }
+
+                    if (derived.Count >= 3)
+                    {
+                        break;
+                    }
+                }
+            }
+
+            // Last resort, so a title with no metadata genre and no telling tag still shows one.
+            if (derived.Count == 0)
+            {
+                derived.Add("Drama");
+            }
+
+            return derived;
+        }
+
+        /// <summary>
+        /// Tag word to genre, for classifying a short drama whose metadata carries no genre. The
+        /// tags this library uses are its de-facto genre vocabulary ("Bromance", "Werewolf", "City"),
+        /// so a keyword match turns them into a real genre; technical tags ("Hardsub", "30 Episodes",
+        /// "9:16") match nothing and are ignored.
+        /// </summary>
+        private static readonly (string Keyword, string Genre)[] TagGenreRules = new[]
+        {
+            ("omegaverse", "Omegaverse"), ("omega", "Omegaverse"), ("mpreg", "Omegaverse"),
+            ("werewolf", "Werewolf"), ("alpha", "Werewolf"), ("shifter", "Werewolf"),
+            ("vampire", "Vampire"), ("supernatural", "Supernatural"), ("magic", "Fantasy"),
+            ("fantasy", "Fantasy"), ("royal", "Royalty"), ("king", "Royalty"), ("prince", "Royalty"),
+            ("mafia", "Mafia"), ("crime", "Crime"), ("gang", "Crime"), ("sports", "Sports"), ("sport", "Sports"),
+            ("school", "School"), ("college", "School"), ("university", "School"),
+            ("military", "War"), ("soldier", "War"), ("army", "War"), ("war", "War"),
+            ("thriller", "Thriller"), ("suspense", "Thriller"), ("dark", "Thriller"),
+            ("toxic", "Thriller"), ("obsess", "Thriller"), ("mystery", "Mystery"),
+            ("hidden identity", "Mystery"), ("comedy", "Comedy"), ("comic", "Comedy"),
+            ("revenge", "Revenge"), ("slice of life", "Slice of Life"), ("family", "Family"),
+            ("romance", "Romance"), ("bromance", "Romance"), ("romantic", "Romance"),
+            ("love", "Romance"), ("lovers", "Romance"), ("marriage", "Romance"), ("sweet", "Romance"),
+            ("fluff", "Romance"), ("age gap", "Romance"), ("co-habitation", "Romance"),
+            ("second chance", "Romance"), ("reunion", "Romance"), ("pregnan", "Romance"),
+            ("drama", "Drama"), ("city", "Drama"), ("rural", "Drama"), ("celebrity", "Drama"),
+            ("billionaire", "Drama"), ("ceo", "Drama"), ("heir", "Drama"), ("office", "Drama"),
+            ("stepbrother", "Drama"), ("hurt-comfort", "Drama"), ("power imbalance", "Drama")
+        };
+
+        /// <summary>
+        /// Stable per-item ordering key for the curation queue. A plain hash would be re-seeded per
+        /// process; this mixes the item id with the caller's seed deterministically.
+        /// </summary>
+        /// <param name="id">Item ID.</param>
+        /// <param name="seed">Caller-supplied seed.</param>
+        /// <returns>Ordering key.</returns>
+        private static ulong MixSeed(Guid id, int seed)
+        {
+            unchecked
+            {
+                ulong hash = (ulong)(uint)seed + 1469598103934665603UL;
+                foreach (var b in id.ToByteArray())
+                {
+                    hash ^= b;
+                    hash *= 1099511628211UL;
+                }
+                return hash;
+            }
+        }
+
+        /// <summary>
+        /// Resolves what a curation card should actually play: the first episode of a series, or the
+        /// item itself. Also reports whether a browser can direct-play it, i.e. H.264 in a container
+        /// the browser understands - everything else has to be transcoded to H.264 first.
+        /// </summary>
+        /// <param name="item">Library item.</param>
+        /// <returns>The playable item id and whether it is browser-direct-playable.</returns>
+        private (Guid Id, bool DirectPlay) ResolvePlayTarget(MediaBrowser.Controller.Entities.BaseItem item)
+        {
+            var target = item;
+            if (item is MediaBrowser.Controller.Entities.TV.Series series)
+            {
+                var episodes = _libraryManager.GetItemList(new MediaBrowser.Controller.Entities.InternalItemsQuery
+                {
+                    ParentId = series.Id,
+                    IncludeItemTypes = new[] { Jellyfin.Data.Enums.BaseItemKind.Episode },
+                    Recursive = true
+                });
+                var first = episodes
+                    .OrderBy(e => e.IndexNumber ?? int.MaxValue)
+                    .ThenBy(e => e.SortName, StringComparer.OrdinalIgnoreCase)
+                    .FirstOrDefault();
+                if (first != null)
+                {
+                    target = first;
+                }
+            }
+
+            var source = target.GetMediaSources(false)?.FirstOrDefault();
+            var video = target.GetMediaStreams()?.FirstOrDefault(s => s.Type == MediaBrowser.Model.Entities.MediaStreamType.Video);
+            var container = source?.Container ?? string.Empty;
+            var h264 = video != null
+                && (video.Codec.Equals("h264", StringComparison.OrdinalIgnoreCase) || video.Codec.Equals("avc", StringComparison.OrdinalIgnoreCase));
+            var browserContainer = container.Contains("mp4", StringComparison.OrdinalIgnoreCase)
+                || container.Contains("webm", StringComparison.OrdinalIgnoreCase)
+                || container.Contains("mov", StringComparison.OrdinalIgnoreCase)
+                || container.Contains("m4v", StringComparison.OrdinalIgnoreCase);
+            return (target.Id, h264 && browserContainer);
+        }
+
+        /// <summary>
         /// Deletes the current user's rating for an item.
         /// </summary>
         /// <param name="itemId">Item ID.</param>

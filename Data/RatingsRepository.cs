@@ -4007,6 +4007,38 @@ namespace Jellyfin.Plugin.Ratings.Data
         }
 
         /// <summary>
+        /// Gets every item ID that has a written review (a rating carrying review text).
+        /// Used by the curation page to find the titles nobody has reviewed yet.
+        /// </summary>
+        /// <returns>Set of reviewed item IDs.</returns>
+        public HashSet<Guid> GetReviewedItemIds()
+        {
+            lock (_lock)
+            {
+                return _ratings.Values
+                    .Where(r => !string.IsNullOrWhiteSpace(r.ReviewText))
+                    .Select(r => r.ItemId)
+                    .ToHashSet();
+            }
+        }
+
+        /// <summary>
+        /// Gets the item IDs each user has written a review for. Used to offer "not yet reviewed by
+        /// you" as well as "never reviewed by anyone" on the curation page.
+        /// </summary>
+        /// <returns>Dictionary mapping user ID to the set of item IDs they reviewed.</returns>
+        public Dictionary<Guid, HashSet<Guid>> GetReviewedItemIdsByUser()
+        {
+            lock (_lock)
+            {
+                return _ratings.Values
+                    .Where(r => !string.IsNullOrWhiteSpace(r.ReviewText))
+                    .GroupBy(r => r.UserId)
+                    .ToDictionary(g => g.Key, g => g.Select(r => r.ItemId).ToHashSet());
+            }
+        }
+
+        /// <summary>
         /// Gets recent media requests ordered by creation date.
         /// </summary>
         /// <param name="limit">Maximum number of requests to return.</param>
