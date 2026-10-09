@@ -159,6 +159,8 @@
                 curationEmpty: 'Nothing left to curate — every title here has a review.',
                 curationPick: 'Select a title to watch it here',
                 rateAndReview: 'Rate & review', noDescription: 'No description yet.',
+                watchRateReview: 'Watch, rate & review', addToPlaylist: 'Add to my playlist',
+                curationPlaylistAdded: 'Added to Watch later', curationPlaylistFailed: 'Could not add to your playlist',
                 shuffle: 'Shuffle', shuffleHint: "Don't like this? Try again",
                 previous: 'Previous', next: 'Next', page: 'Page',
                 latestCommented: 'Latest Commented', mostCommented: 'Most Commented',
@@ -9178,6 +9180,70 @@
         },
 
         /**
+         * Add a curation title to the caller's watch-later playlist, creating that playlist on first
+         * use. Jellyfin's own playlists, so the title then shows up in the Playlists library too.
+         *
+         * @param {string} id Item id to add.
+         */
+        curationAddToPlaylist: function (id) {
+            var self = this;
+            var base = ApiClient.serverAddress();
+            var uid = ApiClient.getCurrentUserId();
+            var headers = { 'Authorization': self.authHeader(), 'Content-Type': 'application/json' };
+            var name = 'Watch later';
+
+            fetch(base + '/Items?userId=' + uid + '&IncludeItemTypes=Playlist&Recursive=true&SortBy=SortName', { headers: headers })
+                .then(function (r) { return r.ok ? r.json() : { Items: [] }; })
+                .then(function (data) {
+                    var lists = (data && data.Items) || [];
+                    var existing = lists.filter(function (l) {
+                        var media = String(l.MediaType || 'Video').toLowerCase();
+                        return media === 'video' && /watch ?later|watchlist/i.test(l.Name || '');
+                    })[0];
+                    if (existing) {
+                        return existing.Id;
+                    }
+                    return fetch(base + '/Playlists', {
+                        method: 'POST',
+                        headers: headers,
+                        body: JSON.stringify({ Name: name, Ids: [], MediaType: 'Video' })
+                    }).then(function (r) { return r.ok ? r.json() : null; }).then(function (d) { return d && d.Id; });
+                })
+                .then(function (listId) {
+                    if (!listId) {
+                        throw new Error('no playlist');
+                    }
+                    return fetch(base + '/Playlists/' + listId + '/Items?ids=' + encodeURIComponent(id) + '&userId=' + uid, {
+                        method: 'POST',
+                        headers: headers
+                    }).then(function (r) {
+                        if (!r.ok) {
+                            throw new Error('add failed ' + r.status);
+                        }
+                    });
+                })
+                .then(function () { self.curationToast(self.t('curationPlaylistAdded')); })
+                .catch(function () { self.curationToast(self.t('curationPlaylistFailed')); });
+        },
+
+        /** Small transient confirmation at the bottom of the screen. */
+        curationToast: function (message) {
+            var el = document.getElementById('curationToast');
+            if (!el) {
+                el = document.createElement('div');
+                el.id = 'curationToast';
+                el.className = 'lb-curation-toast';
+                document.body.appendChild(el);
+            }
+            el.textContent = message;
+            el.classList.add('lb-curation-toast-show');
+            if (el._timer) {
+                clearTimeout(el._timer);
+            }
+            el._timer = setTimeout(function () { el.classList.remove('lb-curation-toast-show'); }, 2600);
+        },
+
+        /**
          * The five titles on this page, each with its poster, description and tags, so the choice
          * of what to rate next is made from the actual content rather than a wall of covers.
          */
@@ -9239,7 +9305,8 @@
                         tagsHtml +
                         '<p class="lb-curation-desc">' + self.escapeHtml(overview || self.t('noDescription')) + '</p>' +
                         '<div class="lb-curation-card-actions">' +
-                            '<button type="button" class="lb-curation-rate" onclick="RatingsPlugin.openMedia(\'' + self.escapeJs(id) + '\')">' + self.escapeHtml(self.t('rateAndReview')) + '</button>' +
+                            '<button type="button" class="lb-curation-rate" onclick="RatingsPlugin.openMedia(\'' + self.escapeJs(id) + '\')">' + self.escapeHtml(self.t('watchRateReview')) + '</button>' +
+                            '<button type="button" class="lb-curation-playlist" onclick="RatingsPlugin.curationAddToPlaylist(\'' + self.escapeJs(id) + '\')">＋ ' + self.escapeHtml(self.t('addToPlaylist')) + '</button>' +
                         '</div>' +
                     '</div>' +
                     '</div>';
