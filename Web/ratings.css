@@ -9268,7 +9268,7 @@ body.lb-route-page-open #reactRoot main > * {
 }
 .lb-curation-rate:hover { box-shadow: 0 8px 20px rgba(0,224,84,.35); }
 .lb-curation-rate:active { transform: scale(.96); }
-.lb-curation-playlist {
+.lb-curation-watchlist {
     background: transparent;
     color: #b9c6d2;
     border: 1px solid #3a4552;
@@ -9279,8 +9279,8 @@ body.lb-route-page-open #reactRoot main > * {
     cursor: pointer;
     transition: background .15s, color .15s, border-color .15s, transform .12s;
 }
-.lb-curation-playlist:hover { background: #2c3440; color: #fff; border-color: #00e054; }
-.lb-curation-playlist:active { transform: scale(.96); }
+.lb-curation-watchlist:hover { background: #2c3440; color: #fff; border-color: #00e054; }
+.lb-curation-watchlist:active { transform: scale(.96); }
 .lb-curation-toast {
     position: fixed;
     left: 50%;
@@ -9329,7 +9329,7 @@ body.lb-route-page-open #reactRoot main > * {
     .lb-curation-rate-links { margin-left: 0; gap: 16px; }
     .lb-curation-card-actions { gap: 8px; }
     .lb-curation-rate,
-    .lb-curation-playlist { flex: 1 1 auto; text-align: center; }
+    .lb-curation-watchlist { flex: 1 1 auto; text-align: center; }
 }
 /* Home-page Curation card: the same Jellyfin card markup as the DONATE card, so it is exactly
    the same size and sits beside it in the "Most Commented" row. A soft green heartbeat mirrors

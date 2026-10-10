@@ -14,6 +14,7 @@ using Jellyfin.Database.Implementations.Enums;
 using Jellyfin.Plugin.Ratings.Data;
 using Jellyfin.Plugin.Ratings.Models;
 using MediaBrowser.Controller;
+using MediaBrowser.Controller.Collections;
 using MediaBrowser.Controller.Library;
 using MediaBrowser.Controller.Session;
 using MediaBrowser.Controller.Persistence;
@@ -43,6 +44,7 @@ namespace Jellyfin.Plugin.Ratings.Api
         private readonly SocialRepository _socialRepository;
         private readonly ISystemManager _systemManager;
         private readonly MediaBrowser.Controller.IO.IPathManager? _pathManager;
+        private readonly ICollectionManager _collectionManager;
 
         // Server restart state
         private static CancellationTokenSource? _restartCts;
@@ -62,6 +64,7 @@ namespace Jellyfin.Plugin.Ratings.Api
         /// <param name="socialWebSocketListener">Social WebSocket listener.</param>
         /// <param name="systemManager">System manager for server control.</param>
         /// <param name="socialRepository">Social repository, for reviewers' profile privacy.</param>
+        /// <param name="collectionManager">Collection manager, for the per-user watchlist.</param>
         public RatingsController(
             RatingsRepository repository,
             IUserManager userManager,
@@ -73,6 +76,7 @@ namespace Jellyfin.Plugin.Ratings.Api
             SocialWebSocketListener socialWebSocketListener,
             ISystemManager systemManager,
             SocialRepository socialRepository,
+            ICollectionManager collectionManager,
             MediaBrowser.Controller.IO.IPathManager? pathManager = null)
         {
             _repository = repository;
@@ -85,6 +89,7 @@ namespace Jellyfin.Plugin.Ratings.Api
             _socialWebSocketListener = socialWebSocketListener;
             _systemManager = systemManager;
             _socialRepository = socialRepository;
+            _collectionManager = collectionManager;
             _pathManager = pathManager;
         }
 
@@ -1932,6 +1937,78 @@ namespace Jellyfin.Plugin.Ratings.Api
                 || container.Contains("mov", StringComparison.OrdinalIgnoreCase)
                 || container.Contains("m4v", StringComparison.OrdinalIgnoreCase);
             return (target.Id, h264 && browserContainer);
+        }
+
+        /// <summary>
+        /// Adds a title to the caller's own watchlist collection - "Maikel Watchlist" - creating that
+        /// collection on first use. A collection, not a playlist, so it shows up in the Collections
+        /// library alongside the other named sets.
+        /// </summary>
+        /// <remarks>
+        /// A Jellyfin collection is not per-user, so the owner is carried in the name. Anyone signed
+        /// in can file titles under their own watchlist; the collection itself is visible to all, the
+        /// same as every other collection on the server.
+        /// </remarks>
+        /// <param name="itemId">Item to add.</param>
+        /// <returns>The collection's id and name.</returns>
+        [HttpPost("Watchlist/{itemId}")]
+        [Authorize]
+        public async Task<ActionResult> AddToWatchlist([FromRoute] [Required] Guid itemId)
+        {
+            try
+            {
+                var userId = await GetAuthenticatedUserIdAsync().ConfigureAwait(false);
+                if (userId == Guid.Empty)
+                {
+                    return Unauthorized("User not authenticated");
+                }
+
+                var user = _userManager.GetUserById(userId);
+                if (user == null)
+                {
+                    return Unauthorized("User not found");
+                }
+
+                var item = _libraryManager.GetItemById(itemId);
+                if (item == null)
+                {
+                    return NotFound($"Item {itemId} not found");
+                }
+
+                var username = string.IsNullOrWhiteSpace(user.Username) ? "My" : user.Username;
+                var name = char.ToUpperInvariant(username[0]) + username.Substring(1) + " Watchlist";
+
+                var existing = _libraryManager.GetItemList(new MediaBrowser.Controller.Entities.InternalItemsQuery
+                {
+                    IncludeItemTypes = new[] { Jellyfin.Data.Enums.BaseItemKind.BoxSet },
+                    Recursive = true
+                }).FirstOrDefault(i => string.Equals(i.Name, name, StringComparison.OrdinalIgnoreCase));
+
+                if (existing != null)
+                {
+                    await _collectionManager.AddToCollectionAsync(existing.Id, new[] { item.Id }).ConfigureAwait(false);
+                    return Ok(new { Id = existing.Id, Name = name });
+                }
+
+                var created = await _collectionManager.CreateCollectionAsync(new CollectionCreationOptions
+                {
+                    Name = name,
+                    IsLocked = false,
+                    ItemIdList = new[] { item.Id.ToString("N", System.Globalization.CultureInfo.InvariantCulture) }
+                }).ConfigureAwait(false);
+
+                if (created == null)
+                {
+                    return StatusCode(StatusCodes.Status500InternalServerError, "Could not create the watchlist");
+                }
+
+                return Ok(new { Id = created.Id, Name = name });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to add item {ItemId} to a watchlist", itemId);
+                return StatusCode(StatusCodes.Status500InternalServerError, "Could not add to the watchlist");
+            }
         }
 
         /// <summary>

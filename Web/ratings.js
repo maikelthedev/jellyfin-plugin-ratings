@@ -160,8 +160,8 @@
                 curationEmpty: 'Nothing left to curate — every title here has a review.',
                 curationPick: 'Select a title to watch it here',
                 rateAndReview: 'Rate & review', noDescription: 'No description yet.',
-                watchRateReview: 'Watch, rate & review', addToPlaylist: 'Add to my playlist',
-                curationPlaylistAdded: 'Added to', curationPlaylistFailed: 'Could not add to your playlist',
+                watchRateReview: 'Watch, rate & review', addToWatchlist: 'Add to my watchlist',
+                curationWatchlistAdded: 'Added to', curationWatchlistFailed: 'Could not add to your watchlist',
                 yourRating: 'Your rating', curationRated: 'Rated', curationRateFailed: 'Could not save your rating',
                 addReview: 'Add review', editReview: 'Edit review', share: 'Share', removeRating: 'Remove',
                 headerStyle: 'Header style', toReview: 'to review',
@@ -9261,58 +9261,29 @@
         },
 
         /**
-         * Add a curation title to the caller's watch-later playlist, creating that playlist on first
-         * use. Jellyfin's own playlists, so the title then shows up in the Playlists library too.
+         * Add a curation title to the caller's own watchlist collection, e.g. "Maikel Watchlist",
+         * creating that collection on first use. A collection rather than a playlist: Jellyfin shows
+         * collections in the Collections library, and one of them can hold a whole curated set.
          *
          * @param {string} id Item id to add.
          */
-        curationAddToPlaylist: function (id) {
+        curationAddToWatchlist: function (id) {
             var self = this;
             var base = ApiClient.serverAddress();
-            var uid = ApiClient.getCurrentUserId();
             var headers = { 'Authorization': self.authHeader(), 'Content-Type': 'application/json' };
 
-            // The playlist is named after the caller, e.g. "Maikel Watchlist".
-            fetch(base + '/Users/Me', { headers: headers })
-                .then(function (r) { return r.ok ? r.json() : null; })
-                .then(function (me) {
-                    var userName = (me && (me.Name || me.name)) ? String(me.Name || me.name) : '';
-                    var name = (userName ? userName.charAt(0).toUpperCase() + userName.slice(1) : 'My') + ' Watchlist';
-                    return fetch(base + '/Items?userId=' + uid + '&IncludeItemTypes=Playlist&Recursive=true&SortBy=SortName', { headers: headers })
-                        .then(function (r) { return r.ok ? r.json() : { Items: [] }; })
-                        .then(function (data) {
-                            var lists = (data && data.Items) || [];
-                            var existing = lists.filter(function (l) {
-                                var media = String(l.MediaType || 'Video').toLowerCase();
-                                return media === 'video' && String(l.Name || '').toLowerCase() === name.toLowerCase();
-                            })[0];
-                            if (existing) {
-                                return { Id: existing.Id, name: name };
-                            }
-                            return fetch(base + '/Playlists', {
-                                method: 'POST',
-                                headers: headers,
-                                body: JSON.stringify({ Name: name, Ids: [], MediaType: 'Video' })
-                            }).then(function (r) { return r.ok ? r.json() : null; })
-                                .then(function (d) { return d && d.Id ? { Id: d.Id, name: name } : null; });
-                        });
-                })
-                .then(function (target) {
-                    if (!target || !target.Id) {
-                        throw new Error('no playlist');
+            fetch(base + '/Ratings/Watchlist/' + encodeURIComponent(id), { method: 'POST', headers: headers })
+                .then(function (r) {
+                    if (!r.ok) {
+                        throw new Error('watchlist failed ' + r.status);
                     }
-                    return fetch(base + '/Playlists/' + target.Id + '/Items?ids=' + encodeURIComponent(id) + '&userId=' + uid, {
-                        method: 'POST',
-                        headers: headers
-                    }).then(function (r) {
-                        if (!r.ok) {
-                            throw new Error('add failed ' + r.status);
-                        }
-                        return target.name;
-                    });
+                    return r.json();
                 })
-                .then(function (name) { self.curationToast(self.t('curationPlaylistAdded') + ' “' + name + '”'); })
-                .catch(function () { self.curationToast(self.t('curationPlaylistFailed')); });
+                .then(function (data) {
+                    var name = (data && (data.Name || data.name)) || '';
+                    self.curationToast(self.t('curationWatchlistAdded') + (name ? ' “' + name + '”' : ''));
+                })
+                .catch(function () { self.curationToast(self.t('curationWatchlistFailed')); });
         },
 
         /** Small transient confirmation at the bottom of the screen. */
@@ -9547,7 +9518,7 @@
                         starsHtml +
                         '<div class="lb-curation-card-actions">' +
                             '<button type="button" class="lb-curation-rate" onclick="RatingsPlugin.openMedia(\'' + self.escapeJs(id) + '\')">' + self.escapeHtml(self.t('watchRateReview')) + '</button>' +
-                            '<button type="button" class="lb-curation-playlist" onclick="RatingsPlugin.curationAddToPlaylist(\'' + self.escapeJs(id) + '\')">＋ ' + self.escapeHtml(self.t('addToPlaylist')) + '</button>' +
+                            '<button type="button" class="lb-curation-watchlist" onclick="RatingsPlugin.curationAddToWatchlist(\'' + self.escapeJs(id) + '\')">＋ ' + self.escapeHtml(self.t('addToWatchlist')) + '</button>' +
                         '</div>' +
                     '</div>' +
                     '</div>';
