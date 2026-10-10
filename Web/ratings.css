@@ -9167,6 +9167,8 @@ body.lb-route-page-open #reactRoot main > * {
     position: relative;
     flex: 0 0 240px;
     width: 240px;
+    /* Hug the video: a taller text column must not stretch this into a black block under it. */
+    align-self: flex-start;
     border-radius: 10px;
     overflow: hidden;
     background: #000;
@@ -9297,10 +9299,37 @@ body.lb-route-page-open #reactRoot main > * {
     z-index: 100000;
 }
 .lb-curation-toast-show { opacity: 1; transform: translate(-50%, 0); }
-@media (max-width: 560px) {
-    .lb-curation-card { gap: 12px; padding: 12px; }
-    .lb-curation-card-player { flex-basis: 140px; width: 140px; }
-    .lb-curation-card-title { font-size: 16px; }
+/* Phones: a two-column card leaves the text column about 165px wide, which is narrower than ten
+   stars, so the rating and the buttons walked off the screen - and the player, stretched to the
+   text column's height, left a column of empty space under the video. Stack instead: the video
+   hugs its own height, and the text, stars and buttons get the full card width. */
+@media (max-width: 640px) {
+    .lb-curation-list { gap: 12px; }
+    .lb-curation-card {
+        flex-direction: column;
+        gap: 12px;
+        padding: 12px;
+    }
+    .lb-curation-card:hover { transform: none; }
+    /* flex-basis/width must be overridden here or the desktop 240px rule wins. */
+    .lb-curation-card-player {
+        flex: 0 0 auto;
+        width: 176px;
+        max-width: 100%;
+        align-self: center;
+    }
+    .lb-curation-video { max-height: 46vh; }
+    .lb-curation-card-title { font-size: 17px; }
+    .lb-curation-desc { margin-top: 8px; -webkit-line-clamp: 5; }
+    /* The label and the links each take their own line, so the stars can span the card: 10 equal
+       cells of ~30px, wide enough to tap. */
+    .lb-curation-stars-wrap { flex-wrap: wrap; row-gap: 8px; }
+    .lb-curation-stars { display: flex; width: 100%; gap: 0; }
+    .lb-curation-star { flex: 1 1 0; min-width: 0; padding: 1px 0; font-size: 20px; }
+    .lb-curation-rate-links { margin-left: 0; gap: 16px; }
+    .lb-curation-card-actions { gap: 8px; }
+    .lb-curation-rate,
+    .lb-curation-playlist { flex: 1 1 auto; text-align: center; }
 }
 /* Home-page Curation card: the same Jellyfin card markup as the DONATE card, so it is exactly
    the same size and sits beside it in the "Most Commented" row. A soft green heartbeat mirrors
