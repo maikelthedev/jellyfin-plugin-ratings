@@ -9040,6 +9040,19 @@ body.lb-route-page-open #reactRoot main > * {
     display: none !important;
 }
 
+/* Jellyfin only gives its app bar the mobile "drawer" shape to the paths its own router knows
+   (AppLayout's isDrawerPath() is an exact match against its route table), and it renders the
+   toolbar with flex-wrap on small screens. A plugin route such as #/curation or #/community is
+   not one of those paths, so the bar falls back to the DESKTOP shape - server logo plus the whole
+   library nav. That row is ~553px wide, so on a 390px phone it wraps to a second line and is cut
+   off mid-word, leaving a doubled, broken-looking header. Below the md breakpoint Jellyfin's own
+   pages show only the compact row, so drop the nav row here too and the bar matches them. */
+@media (max-width: 899.98px) {
+    body.lb-route-page-open header.MuiAppBar-root .MuiToolbar-root > .MuiStack-root {
+        display: none !important;
+    }
+}
+
 /* Curation page: a larger poster grid with the title/year under each poster, plus the
    scope selector and shuffle button above it. */
 .lb-curation-controls {
