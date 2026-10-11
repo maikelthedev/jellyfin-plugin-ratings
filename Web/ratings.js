@@ -3141,6 +3141,41 @@
             return baseUrl + value;
         },
 
+        /**
+         * The poster for one rating row.
+         *
+         * The server resolves this for the item that actually owns the artwork, and that matters:
+         * a vertical show is reviewed as a whole, so its rating is stored on its SEASON, and a
+         * season has no artwork of its own. Building "/Items/<stored id>/Images/Primary" here drew
+         * an empty card and a 404 for every one of those rows. The server's answer therefore wins,
+         * and a library item is only guessed at when the rating carries no poster at all.
+         *
+         * @param {object} rating Rating row from the API.
+         * @param {string} baseUrl Server address.
+         * @param {number} [maxHeight] Height to ask the server to scale the artwork to.
+         * @returns {string} Image URL, or '' when there is nothing to show.
+         */
+        imageUrlFor: function (rating, baseUrl, maxHeight) {
+            var raw = String(this.apiField(rating, 'posterUrl') || '');
+            var isServerPath = raw.charAt(0) === '/' && raw.charAt(1) !== '/';
+            var resolved = this.resolvePosterUrl(baseUrl, raw);
+            if (resolved) {
+                // A server path is asked for at the size the layout needs. A stored external poster
+                // already has its size baked into the URL and takes no such parameter, so adding
+                // one would break it.
+                if (isServerPath && maxHeight) {
+                    resolved += (resolved.indexOf('?') === -1 ? '?' : '&') + 'maxHeight=' + maxHeight;
+                }
+                return resolved;
+            }
+
+            var id = this.apiField(rating, 'itemId') || '';
+            var inLib = this.apiField(rating, 'inLibrary') !== false && id;
+            return inLib
+                ? baseUrl + '/Items/' + id + '/Images/Primary' + (maxHeight ? '?maxHeight=' + maxHeight : '')
+                : '';
+        },
+
         apiField: function (obj, name) {
             if (!obj) { return undefined; }
             var v = obj[name];
@@ -3946,12 +3981,8 @@
                         var name = r.itemName || (r.itemName ?? r.ItemName) || 'Unknown';
                         var rating = r.rating || r.Rating || 0;
                         var inLib = (r.inLibrary !== false && r.InLibrary !== false) && id;
-                        // A catalog title has no Jellyfin item behind it, so /Items/<id>/Images
-                        // 404s and the card drew a grey box even though the rating itself showed.
-                        // Those ratings carry the TMDB poster the server backfilled.
-                        var img = inLib
-                            ? baseUrl + '/Items/' + id + '/Images/Primary?maxHeight=240'
-                            : self.safeCssUrl(self.apiField(r, 'posterUrl'));
+                        // The server's poster, which follows a season-stored review up to the show.
+                        var img = self.imageUrlFor(r, baseUrl, 240);
                         var dragAttr = (isSelf && id) ? ' draggable="true" ondragstart="RatingsPlugin.activityDragStart(event,\'' + self.escapeJs(id) + '\',\'' + self.escapeJs(name) + '\')"' : '';
                         html += '<div class="lb-poster-card"' + dragAttr + (inLib ? ' onclick="RatingsPlugin.openMedia(\'' + self.escapeJs(id) + '\')"' : '') + ' title="' + self.escapeHtml(name) + (isSelf ? ' — drag to a row' : '') + '">' +
                             '<div class="lb-poster-img" style="background-image:url(\'' + img + '\')"></div>' +
@@ -3980,7 +4011,7 @@
                         var txt = r.reviewText || (r.reviewText ?? r.ReviewText) || r.review || r.Review || '';
                         var rating = r.rating || r.Rating || 0;
                         var inLib = (r.inLibrary !== false && r.InLibrary !== false) && id;
-                        var img = id ? baseUrl + '/Items/' + id + '/Images/Primary?maxHeight=120' : '';
+                        var img = self.imageUrlFor(r, baseUrl, 120);
                         html += '<div class="lb-rev2"' + (inLib ? ' style="cursor:pointer" onclick="RatingsPlugin.openMedia(\'' + self.escapeJs(id) + '\')"' : '') + '>' +
                             '<div class="lb-rev2-poster" style="background-image:url(\'' + img + '\')"></div>' +
                             '<div class="lb-rev2-body"><div class="lb-rev2-head"><span class="lb-rev2-title">' + self.escapeHtml(name) + '</span>' + self.renderStars(rating) + '</div>' +
@@ -6479,6 +6510,17 @@
                 matches.forEach(function (m) {
                     var name = m.username || 'Unknown';
                     var initial = name[0] ? name[0].toUpperCase() : '?';
+                    // The same picture the rest of the UI shows. This row used to draw the initial
+                    // alone, so every profile in the sidebar looked like a placeholder however the
+                    // user had set their picture. The initial stays behind the image as the
+                    // fallback, and a broken one is hidden by the .plugin-img-fallback handler.
+                    var picUrl = m.userId
+                        ? baseUrl + '/Users/' + encodeURIComponent(m.userId) + '/Images/Primary?height=80&quality=90'
+                        : '';
+                    var avatarInner = self.escapeHtml(initial) +
+                        (picUrl
+                            ? '<img class="lb-match-avatar-img plugin-img-fallback" src="' + self.escapeHtml(picUrl) + '" alt="" loading="lazy" decoding="async" />'
+                            : '');
                     var shared = (m.sharedGenres || []).join(' · ');
                     var encName = self.encodeParam(name);
                     var w = m.watching;
@@ -6531,7 +6573,7 @@
                     html += '<div class="lb-match' + (w ? ' is-watching' : '') + '">' +
                         '<div class="lb-match-row" onclick="RatingsPlugin.showProfilePage(\'' + self.escapeJs(m.userId) + '\')">' +
                         '<div class="lb-match-avatar-wrap">' +
-                        '<div class="lb-match-avatar">' + self.escapeHtml(initial) + '</div>' +
+                        '<div class="lb-match-avatar">' + avatarInner + '</div>' +
                         '<span class="lb-presence-dot ' + presence + '" title="' + presenceLabel + '"></span>' +
                         '</div>' +
                         '<div class="lb-match-info">' +
@@ -7123,14 +7165,10 @@
                     var inLib = (r.inLibrary !== false && r.InLibrary !== false) && itemId;
                     var year = r.year || (r.year ?? r.Year);
 
-                    // The server now remembers a poster with the rating, so a title that has been
-                    // removed from the server still shows properly instead of an empty card with
-                    // bare stars (issue #72). Only fall back to a live Jellyfin image URL when the
-                    // item is actually still in the library - otherwise it just 404s.
-                    var imageUrl = r.posterUrl || (r.posterUrl ?? r.PosterUrl) || r.imageUrl || r.ImageUrl || '';
-                    if (!imageUrl && inLib) {
-                        imageUrl = baseUrl + '/Items/' + itemId + '/Images/Primary?maxHeight=200';
-                    }
+                    // The server resolved this for the item that owns the artwork (a show, not the
+                    // season its review is stored on), falling back to the remembered poster for
+                    // a title that has left the server (issue #72).
+                    var imageUrl = self.imageUrlFor(r, baseUrl, 200);
 
                     var clickAttr = inLib ? ' style="cursor:pointer" onclick="RatingsPlugin.openMedia(\'' + self.escapeJs(itemId) + '\')"' : '';
                     var safePoster = self.safeCssUrl(imageUrl) || (inLib ? imageUrl : '');
@@ -7277,14 +7315,9 @@
                         voteHtml = '<span class="lb-rev-likes"><span class="lb-rev-vote" disabled>👍 ' + likeCount + '</span><span class="lb-rev-vote" disabled>👎 ' + dislikeCount + '</span></span>';
                     }
 
-                    // Poster + media badge, so a review reads as being about a film rather than
-                    // as a bare row of text. Library items use their Jellyfin artwork; a catalog
-                    // title uses the TMDB poster stored with the rating.
-                    var baseUrl = ApiClient.serverAddress();
-                    var storedPoster = self.safeCssUrl(self.apiField(r, 'posterUrl'));
-                    var posterUrl = inLib
-                        ? baseUrl + '/Items/' + itemId + '/Images/Primary?maxHeight=180'
-                        : storedPoster;
+                    // The poster the server resolved for this rating - it follows a season-stored
+                    // review up to the show that owns the artwork.
+                    var posterUrl = self.imageUrlFor(r, baseUrl, 180);
                     var rawType = String(self.apiField(r, 'type') || '');
                     var isSeries = /series|season|episode/i.test(rawType);
                     var typeLabel = isSeries ? 'Series' : 'Movie';
@@ -7298,9 +7331,12 @@
                         : '';
 
                     html += '<article class="lb-review-card' + (inLib ? ' lb-review-openable' : ' lb-review-external') + '">' +
-                        '<div class="lb-review-poster"' + openAttr +
-                        (posterUrl ? ' style="background-image:url(\'' + self.escapeHtml(posterUrl) + '\')"' : '') + '>' +
-                        (posterUrl ? '' : '<span class="lb-review-poster-fallback">' + (isSeries ? '📺' : '🎬') + '</span>') +
+                        '<div class="lb-review-poster"' + openAttr + '>' +
+                        (posterUrl
+                            // An <img> rather than a CSS background: a background cannot be lazy, so
+                            // a hundred reviews all hit Jellyfin's image pipeline at once.
+                            ? '<img class="lb-review-poster-img plugin-img-fallback" src="' + self.escapeHtml(posterUrl) + '" alt="" loading="lazy" decoding="async" />'
+                            : '<span class="lb-review-poster-fallback">' + (isSeries ? '📺' : '🎬') + '</span>') +
                         '<span class="lb-review-type ' + (isSeries ? 'series' : 'movie') + '">' + typeLabel + '</span>' +
                         '</div>' +
                         '<div class="lb-review-body">' +

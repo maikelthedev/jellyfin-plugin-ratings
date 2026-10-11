@@ -702,9 +702,11 @@ namespace Jellyfin.Plugin.Ratings.Api
                 var type = item?.GetType().Name ?? r.MediaType;
 
                 // A live library item always wins for the poster - it is local and always current.
-                // r.PosterUrl is the remembered one, used once the item is gone.
+                // Resolved through DisplayItemId, not item.Id: the artwork belongs to the show,
+                // and this rating is stored on a season that has none. r.PosterUrl is the
+                // remembered one, used once the item is gone.
                 var poster = item != null
-                    ? "/Items/" + item.Id.ToString("N") + "/Images/Primary"
+                    ? "/Items/" + DisplayItemId(item).ToString("N") + "/Images/Primary"
                     : r.PosterUrl;
 
                 result.Add(new
@@ -2136,14 +2138,15 @@ namespace Jellyfin.Plugin.Ratings.Api
         }
 
         /// <summary>
-        /// The item to list a rating under. A rating is stored on a season (or episode) for a show,
-        /// so a rating-sorted listing shows the series rather than a bare "Season 1".
+        /// The item that owns a rating's artwork. A season has no picture of its own, so the
+        /// artwork belongs to the show - and for a vertical drama the rating is stored on the
+        /// season. Anything that hands the UI a poster URL has to go through here, or the card
+        /// asks Jellyfin for /Items/&lt;season&gt;/Images/Primary and gets a 404.
         /// </summary>
-        /// <param name="ratingItemId">The id the rating is stored against.</param>
-        /// <returns>The series id to list it under, or the id unchanged.</returns>
-        private Guid DisplayItemId(Guid ratingItemId)
+        /// <param name="item">The item the rating is stored on, if it still exists.</param>
+        /// <returns>The id whose artwork represents the rating, or Guid.Empty without an item.</returns>
+        private static Guid DisplayItemId(MediaBrowser.Controller.Entities.BaseItem? item)
         {
-            var item = _libraryManager.GetItemById(ratingItemId);
             if (item is MediaBrowser.Controller.Entities.TV.Season season && season.SeriesId != Guid.Empty)
             {
                 return season.SeriesId;
@@ -2154,7 +2157,19 @@ namespace Jellyfin.Plugin.Ratings.Api
                 return episode.SeriesId;
             }
 
-            return ratingItemId;
+            return item?.Id ?? Guid.Empty;
+        }
+
+        /// <summary>
+        /// The item to list a rating under. A rating is stored on a season (or episode) for a show,
+        /// so a rating-sorted listing shows the series rather than a bare "Season 1".
+        /// </summary>
+        /// <param name="ratingItemId">The id the rating is stored against.</param>
+        /// <returns>The series id to list it under, or the id unchanged.</returns>
+        private Guid DisplayItemId(Guid ratingItemId)
+        {
+            var item = _libraryManager.GetItemById(ratingItemId);
+            return item == null ? ratingItemId : DisplayItemId(item);
         }
 
         /// <summary>
