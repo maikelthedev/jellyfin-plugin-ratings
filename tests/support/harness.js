@@ -94,6 +94,32 @@ function parseAttrs(text) {
 }
 
 /**
+ * Define a node's DOM links as non-enumerable.
+ *
+ * parentElement, parentNode, ownerDocument and the make* factories point back up into the
+ * document, so an enumerable link lets anything that walks the object - most importantly the
+ * pretty-print Node builds when an assertion fails - walk back out of the element it was handed
+ * and into the whole tree, once per level, at unbounded depth. That expands roughly 3x per level:
+ * ~10 KB at depth 1, 5 MB at depth 6, 116 MB at depth 10, and an assertion comparing an element to
+ * null has reached tens of GB and been OOM-killed (taking the tmux window it ran in with it).
+ * Keeping the links non-enumerable makes the same failure print the rendered subtree in a few
+ * hundred bytes. Later plain assignments keep the property non-enumerable as long as it is created
+ * here first, because the descriptor already exists.
+ *
+ * @param {object} node Node to attach to.
+ * @param {object} props Link name -> value.
+ * @returns {object} The node, for chaining.
+ */
+function link(node, props) {
+    Object.entries(props).forEach(([key, value]) => {
+        Object.defineProperty(node, key, {
+            value, writable: true, configurable: true, enumerable: false,
+        });
+    });
+    return node;
+}
+
+/**
  * Parse an HTML fragment into nodes. Text, comments, nested elements, and style/script bodies
  * (whose contents may contain "<" that is not markup) are all handled; anything more exotic is not.
  *
@@ -263,16 +289,16 @@ class Element {
         this.open = false;
         this.children = [];     // elements only
         this.childNodes = [];   // elements and text (like the DOM, text is a child node)
-        this.parentElement = null;
-        this.parentNode = null;
+        // Links, not data - see link(). ownerDocument is pre-created here so that assigning it in
+        // makeElement() keeps it non-enumerable.
+        link(this, { parentElement: null, parentNode: null, ownerDocument: null });
         this.style = { setProperty() {}, removeProperty() {}, getPropertyValue: () => '', cssText: '' };
         this.dataset = {};
         this.attributes = {};
         this._html = '';
         this._text = '';
         this._listeners = {};
-        this._makeElement = null;
-        this._makeText = null;
+        link(this, { _makeElement: null, _makeText: null });
         const set = new Set();
         this.classList = {
             add: (...names) => names.forEach((n) => set.add(n)),
@@ -473,8 +499,7 @@ class TextNode {
         this.nodeType = 3;
         this.textContent = String(text);
         this.nodeValue = String(text);
-        this.parentElement = null;
-        this.parentNode = null;
+        link(this, { parentElement: null, parentNode: null });
         this.children = [];
         this.classList = { contains: () => false, add() {}, remove() {}, toggle() { return false; } };
     }
@@ -509,9 +534,7 @@ function queryAll(root, selector, limit) {
 function createDocument() {
     const makeElement = (tag) => {
         const el = createElement(tag);
-        el.ownerDocument = doc;
-        el._makeElement = makeElement;
-        el._makeText = makeText;
+        link(el, { ownerDocument: doc, _makeElement: makeElement, _makeText: makeText });
         return el;
     };
     const makeText = (text) => new TextNode(text);
@@ -658,8 +681,8 @@ function loadPlugin(options = {}) {
     window.window = window;
     window.self = window;
     window.globalThis = window;
-    document.defaultView = window;
-    document.ownerDocument = document;
+    // Links again: doc -> defaultView -> window -> document would be another way back out.
+    link(document, { defaultView: window, ownerDocument: document });
 
     if (options.authenticated === false) {
         apiClient.getCurrentUserId = () => '';
