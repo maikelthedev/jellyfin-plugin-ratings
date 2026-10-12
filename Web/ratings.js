@@ -5161,23 +5161,11 @@
             // Build the Letterboxd-style layout
             var html = '';
 
-            // Toolbar with back, fullscreen, and settings
-            html += '<div class="lb-toolbar">' +
-                '<div class="lb-back" onclick="RatingsPlugin.profileGoBack()">' +
-                '<svg viewBox="0 0 24 24" width="20" height="20"><path fill="currentColor" d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z"/></svg>' +
-                ((self._profileHistory && self._profileHistory.length > 0) ? self.t('backToProfile') : self.t('back')) + '</div>' +
-                '<div class="lb-toolbar-actions">' +
-                (status.isSelf ? '<button class="lb-toolbar-btn" onclick="RatingsPlugin.openProfileSettings()" title="' + self.t('settings') + '">⚙</button>' : '') +
-                '<div class="lb-bg-wrap" style="position:relative;display:inline-block;">' +
-                '<button class="lb-toolbar-btn" onclick="RatingsPlugin.toggleBgMenu(event)" title="' + RatingsPlugin.t('background') + '">🎨</button>' +
-                '<div class="lb-bg-menu" id="lbBgMenu" style="display:none;">' +
-                '<div class="lb-bg-swatch lb-bg-aurora" onclick="RatingsPlugin.setProfileBackground(\'aurora\')" title="Aurora"></div>' +
-                '<div class="lb-bg-swatch lb-bg-sunset" onclick="RatingsPlugin.setProfileBackground(\'sunset\')" title="Sunset"></div>' +
-                '<div class="lb-bg-swatch lb-bg-emerald" onclick="RatingsPlugin.setProfileBackground(\'emerald\')" title="Emerald"></div>' +
-                '<div class="lb-bg-swatch lb-bg-mono" onclick="RatingsPlugin.setProfileBackground(\'mono\')" title="Minimal"></div>' +
-                '</div></div>' +
-                '<button class="lb-toolbar-btn" id="lbFullscreenBtn" onclick="RatingsPlugin.toggleProfileFullscreen()" title="' + RatingsPlugin.t('toggleFullscreen') + '">⛶</button>' +
-                '</div></div>';
+            // No chrome row of its own. The page used to carry a toolbar (Back, settings, the
+            // background picker, fullscreen) above a header that already held the identity and the
+            // actions: it made this page look different from community and curation, and it
+            // duplicated the way back the browser and the app bar already provide. The controls
+            // that nothing else provides moved into the header actions (see profileHeaderControls).
 
             // Profile header with gradient background (or an uploaded looping GIF/video behind it).
             var headerMediaUrl = profile.headerMediaUrl || (profile.headerMediaUrl ?? profile.HeaderMediaUrl) || '';
@@ -5206,7 +5194,8 @@
                 '<span class="lb-status-text ' + statusClass + '">' + statusText + '</span>' +
                 (memberSince ? '<span class="lb-joined">' + self.t('memberSince') + ' ' + memberSince + '</span>' : '') +
                 '</div></div></div>' +
-                '<div class="lb-header-actions">' + self.buildProfileActions(profile, status) + '</div>' +
+                '<div class="lb-header-actions">' + self.buildProfileActions(profile, status) +
+                self.profileHeaderControls(status) + '</div>' +
                 '</div>';
 
             // Stats bar (Letterboxd style)
@@ -5308,6 +5297,30 @@
         /**
          * Build profile action buttons
          */
+        /**
+         * The controls only the profile page has: settings (own profile only), the background picker
+         * and fullscreen. They live in the header actions rather than a row of their own, so the
+         * profile reads like community and curation - a stat-led header carrying the identity, the
+         * actions and nothing else.
+         */
+        profileHeaderControls: function (status) {
+            var self = this;
+            var html = '';
+            if (status.isSelf) {
+                html += '<button class="lb-toolbar-btn" onclick="RatingsPlugin.openProfileSettings()" title="' + self.t('settings') + '">⚙</button>';
+            }
+            html += '<div class="lb-bg-wrap" style="position:relative;display:inline-block;">' +
+                '<button class="lb-toolbar-btn" onclick="RatingsPlugin.toggleBgMenu(event)" title="' + self.t('background') + '">🎨</button>' +
+                '<div class="lb-bg-menu" id="lbBgMenu" style="display:none;">' +
+                '<div class="lb-bg-swatch lb-bg-aurora" onclick="RatingsPlugin.setProfileBackground(\'aurora\')" title="Aurora"></div>' +
+                '<div class="lb-bg-swatch lb-bg-sunset" onclick="RatingsPlugin.setProfileBackground(\'sunset\')" title="Sunset"></div>' +
+                '<div class="lb-bg-swatch lb-bg-emerald" onclick="RatingsPlugin.setProfileBackground(\'emerald\')" title="Emerald"></div>' +
+                '<div class="lb-bg-swatch lb-bg-mono" onclick="RatingsPlugin.setProfileBackground(\'mono\')" title="Minimal"></div>' +
+                '</div></div>' +
+                '<button class="lb-toolbar-btn" id="lbFullscreenBtn" onclick="RatingsPlugin.toggleProfileFullscreen()" title="' + RatingsPlugin.t('toggleFullscreen') + '">⛶</button>';
+            return html;
+        },
+
         buildProfileActions: function (profile, status) {
             var self = this;
             var html = '';
