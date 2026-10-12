@@ -6222,13 +6222,19 @@
                 users.forEach(function (user) {
                     var username = user.username || 'Unknown';
                     var initial = username[0] ? username[0].toUpperCase() : '?';
+                    // The same picture the rest of the UI shows, with the initial behind it as the
+                    // fallback: a 404 hides the image through the delegated .plugin-img-fallback.
+                    var avatarUrl = self.getProfileAvatarUrl(user, user.userId);
+                    var avatar = self.escapeHtml(initial) + (avatarUrl
+                        ? '<img class="lb-user-avatar-img plugin-img-fallback" src="' + self.escapeHtml(avatarUrl) + '" alt="" />'
+                        : '');
                     var badges = '';
                     if (user.isFriend) badges += '<span class="lb-user-badge friend">' + RatingsPlugin.t('friend') + '</span>';
                     else if (user.isFollowing) badges += '<span class="lb-user-badge following">' + RatingsPlugin.t('following') + '</span>';
 
                     html += '<div class="lb-user-card" data-username="' + self.escapeHtml(username.toLowerCase()) + '" ' +
                         'onclick="RatingsPlugin.showProfilePage(\'' + self.escapeJs(user.userId) + '\')">' +
-                        '<div class="lb-user-avatar' + (user.isOnline ? ' online' : '') + '">' + self.escapeHtml(initial) + '</div>' +
+                        '<div class="lb-user-avatar' + (user.isOnline ? ' online' : '') + '">' + avatar + '</div>' +
                         '<div class="lb-user-meta">' +
                         '<div class="lb-user-name">' + self.escapeHtml(username) + badges + '</div>' +
                         (user.bio ? '<div class="lb-user-bio">' + self.escapeHtml(user.bio) + '</div>' : '') +
@@ -7496,8 +7502,15 @@
             users.forEach(function (user) {
                 var username = user.username || user.userName || 'Unknown';
                 var initial = username[0].toUpperCase();
-                html += '<div class="lb-user-card" onclick="RatingsPlugin.showProfilePage(\'' + self.escapeJs(user.userId || user.id) + '\')">' +
-                    '<div class="lb-user-avatar">' + initial + '</div>' +
+                var userId = user.userId || user.id;
+                // The same picture the rest of the UI shows, with the initial behind it as the
+                // fallback: a 404 hides the image through the delegated .plugin-img-fallback.
+                var avatarUrl = self.getProfileAvatarUrl(user, userId);
+                var avatar = self.escapeHtml(initial) + (avatarUrl
+                    ? '<img class="lb-user-avatar-img plugin-img-fallback" src="' + self.escapeHtml(avatarUrl) + '" alt="" />'
+                    : '');
+                html += '<div class="lb-user-card" onclick="RatingsPlugin.showProfilePage(\'' + self.escapeJs(userId) + '\')">' +
+                    '<div class="lb-user-avatar">' + avatar + '</div>' +
                     '<div class="lb-user-name">' + self.escapeHtml(username) + '</div>' +
                     '</div>';
             });
