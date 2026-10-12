@@ -39,3 +39,21 @@ test('t() falls back to the English string for an unknown key', () => {
     const { plugin } = loadPlugin();
     assert.strictEqual(plugin.t('watchRateReview'), 'Watch, rate & review');
 });
+
+test('innerHTML is parsed, so a renderer can query back what it just wrote', () => {
+    const { document } = loadPlugin();
+    const el = document.createElement('div');
+    el.innerHTML = '<div class="lb-tabs"><button class="lb-tab" data-tab="overview">Overview</button>'
+        + '<button class="lb-tab active" data-tab="ratings">Ratings</button></div>';
+
+    assert.strictEqual(el.querySelectorAll('.lb-tab').length, 2, 'both buttons should be found');
+    assert.strictEqual(el.querySelector('.lb-tab.active').textContent, 'Ratings', 'and by their state');
+    assert.strictEqual(el.querySelector('button[data-tab="overview"]').textContent, 'Overview', 'and by attribute');
+});
+
+test('a <style> block is data, not markup', () => {
+    const { document } = loadPlugin();
+    const el = document.createElement('div');
+    el.innerHTML = '<style>.a > .b { color: red }</style><div class="b">x</div>';
+    assert.strictEqual(el.querySelectorAll('.b').length, 1, 'the CSS child selector must not be parsed as an element');
+});
