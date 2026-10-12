@@ -4,6 +4,7 @@
   "description": "Dev tooling and tests for the Jellyfin Ratings plugin. The plugin itself is built with dotnet; this package only exists so the injected Web/ bundle can be unit tested in Node.",
   "scripts": {
     "test": "node --test tests/*.test.js",
+    "test:safe": "bash scripts/test-safe.sh",
     "test:integration": "RATINGS_TEST_SERVER=${RATINGS_TEST_SERVER:-http://127.0.0.1:8096} RATINGS_TEST_USER=${RATINGS_TEST_USER:?set RATINGS_TEST_USER} node --test tests/integration/*.test.js"
   }
 }
