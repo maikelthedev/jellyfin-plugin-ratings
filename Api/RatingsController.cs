@@ -697,7 +697,11 @@ namespace Jellyfin.Plugin.Ratings.Api
                 // Fall back to the snapshot taken when the rating was made. Without this a film
                 // removed from the library left a row of stars with no title and no poster,
                 // because everything shown came from the (now missing) library item.
-                var name = item?.Name ?? r.Title;
+                //
+                // DisplayName, not item.Name: reviews of a series live on its season (see
+                // ResolveRatingTarget), and a season's own name is literally "Season 1" - so the
+                // profile's recent-reviews card and activity feed labelled every show the same.
+                var name = item != null ? DisplayName(item) : r.Title;
                 var year = item?.ProductionYear ?? r.Year;
                 var type = item?.GetType().Name ?? r.MediaType;
 
@@ -2058,7 +2062,9 @@ namespace Jellyfin.Plugin.Ratings.Api
 
         /// <summary>
         /// A human name for an item. Ratings now live on a season, whose own name ("Season 1") says
-        /// nothing about the show, so the series is prefixed: "Season 1: The Show".
+        /// nothing about the show, so the show leads: "The Show: Season 1". This is what every
+        /// listing shows - the profile's recent reviews and activity, the community feed, the
+        /// posters - so a show is never named only by its season number.
         /// </summary>
         /// <param name="item">The item a rating is stored against.</param>
         /// <returns>The name to display.</returns>
@@ -2071,7 +2077,7 @@ namespace Jellyfin.Plugin.Ratings.Api
 
             if (item is MediaBrowser.Controller.Entities.TV.Season season && !string.IsNullOrWhiteSpace(season.SeriesName))
             {
-                return season.Name + ": " + season.SeriesName;
+                return season.SeriesName + ": " + season.Name;
             }
 
             return item.Name;
