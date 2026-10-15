@@ -466,6 +466,12 @@
          * Load badge display profiles from server config (uses cached config)
          */
         loadBadgeDisplayProfiles: function () {
+            // The Ratings Dashboard is a plugin PAGE, and Jellyfin 12.1 inserts such a page's HTML
+            // without ever evaluating its data-controller module (the AMD require() it expects is
+            // gone), which left the page showing placeholders forever. This script is loaded on
+            // every page, so it loads that module itself.
+            this.bootDashboardPage(0);
+
             if (!this.ratingsEnabled) return;
             const self = this;
 
@@ -3581,6 +3587,42 @@
             self._initialRouteCheck = true;
             this.onPageChange();
             self._initialRouteCheck = false;
+        },
+
+        /**
+         * Load the Ratings Dashboard page's own script once its markup is on screen.
+         *
+         * It is added as a module script, so the browser fetches and runs it - the one way to get a
+         * plugin page's JS executed on 12.1. The page then fills itself in; the container is marked
+         * so a page already booted is not booted twice.
+         *
+         * @param {number} tries How many times this has retried waiting for the markup.
+         */
+        bootDashboardPage: function (tries) {
+            var self = this;
+            var view = document.querySelector('.pluginConfigurationPage[data-controller*="ratings_dashboard"]');
+            if (!view) {
+                // The dashboard replaces the page body asynchronously, so keep looking briefly.
+                if ((tries || 0) < 20) {
+                    setTimeout(function () { self.bootDashboardPage((tries || 0) + 1); }, 150);
+                }
+                return;
+            }
+
+            if (view._ratingsDashboardBooted) return;
+            view._ratingsDashboardBooted = true;
+
+            var script = document.createElement('script');
+            script.type = 'module';
+            script.src = (window.ApiClient && ApiClient.getUrl
+                ? ApiClient.getUrl('/web/ConfigurationPage?name=ratings_dashboard.js')
+                : '/web/ConfigurationPage?name=ratings_dashboard.js');
+            script.onerror = function () {
+                // Let a later navigation try again rather than leaving the page dead for good.
+                view._ratingsDashboardBooted = false;
+                console.warn('Ratings: could not load the dashboard page script');
+            };
+            document.body.appendChild(script);
         },
 
         /**

@@ -1,3 +1,6 @@
+(function () {
+    'use strict';
+
 const getConfigurationPageUrl = (name) => {
     return 'configurationpage?name=' + encodeURIComponent(name);
 };
@@ -15,19 +18,25 @@ function getTabs() {
     ];
 }
 
-export default function (view, params) {
-    view.addEventListener('viewshow', function (e) {
-        LibraryMenu.setTabs('ratings_dashboard', 0, getTabs);
+    // Loaded by ratings.js as a module script: Jellyfin 12.1 inserts a plugin page's HTML but never
+    // evaluates its data-controller module (the AMD require() it expects is gone, and it does not run
+    // inline scripts either), so the plugin loads this file itself once the page is on screen. No
+    // viewshow event ever arrives, so nothing here waits for one.
+    var view = document.querySelector('.pluginConfigurationPage[data-controller*="ratings_dashboard"]')
+        || document.querySelector('.pluginConfigurationPage');
+    if (!view || view._ratingsDashboardInit) {
+        return;
+    }
+    view._ratingsDashboardInit = true;
 
-        // Load all dashboard data
-        showPluginVersion();
-        loadStats();
-        loadRecentActivity();
-        loadTopRated();
-        loadMostActiveUsers();
-        loadRatingDistribution();
-        loadRecentRequests();
-    });
+    // Load all dashboard data
+    showPluginVersion();
+    loadStats();
+    loadRecentActivity();
+    loadTopRated();
+    loadMostActiveUsers();
+    loadRatingDistribution();
+    loadRecentRequests();
 
     /**
      * Puts the running plugin version in the heading.
@@ -408,8 +417,10 @@ export default function (view, params) {
     // (ScriptInjectionMiddleware) - a hardcoded server version is what silently drifted to
     // "10.11.0" across 1 call sites while the server ran 12.1.
     const CLIENT_VERSION = (function () {
-        const m = /[?&]v=([^&]+)/.exec(SCRIPT_SRC || '');
-        return (m && decodeURIComponent(m[1])) || '1.0.442.0';
+        const scriptSrc = (document.querySelector('script[src*="/Ratings/ratings.js"]') || {}).src || '';
+        // SCRIPT_SRC was referenced here but never declared, so this threw before any request.
+        const m = /[?&]v=([^&]+)/.exec(scriptSrc);
+        return (m && decodeURIComponent(m[1])) || '0';
     })();
 
         const token = window.ApiClient.accessToken();
@@ -440,6 +451,14 @@ export default function (view, params) {
         return date.toLocaleDateString();
     }
 
-    view.addEventListener('viewhide', function (e) {});
-    view.addEventListener('viewdestroy', function (e) {});
-};
+    // The tab strip is cosmetic, and 12.1's LibraryMenu.setTabs() throws ("a is not a function"), so
+    // this runs last and cannot stop the data above from loading.
+    if (window.LibraryMenu && typeof LibraryMenu.setTabs === 'function') {
+        try {
+            LibraryMenu.setTabs('ratings_dashboard', 0, getTabs);
+        } catch (e) {
+            console.warn('Ratings: the dashboard menu rejected the tab strip', e);
+        }
+    }
+})();
+
