@@ -9,6 +9,15 @@
     // only valid while the script is executing, so it has to be captured here at parse time rather
     // than looked up later from inside a method.
     const SCRIPT_SRC = (document.currentScript && document.currentScript.src) || '';
+    // The client version this plugin announces to the Jellyfin API ("MediaBrowser Client=... Version=").
+    // Taken from our own script URL's ?v=<pluginVersion>, which the server injects
+    // (ScriptInjectionMiddleware) - a hardcoded server version is what silently drifted to
+    // "10.11.0" across 46 call sites while the server ran 12.1.
+    const CLIENT_VERSION = (function () {
+        const m = /[?&]v=([^&]+)/.exec(SCRIPT_SRC || '');
+        return (m && decodeURIComponent(m[1])) || '1.0.442.0';
+    })();
+
 
     const RatingsPlugin = {
         pluginId: 'a1b2c3d4-e5f6-4a5b-8c9d-0e1f2a3b4c5d',
@@ -4078,7 +4087,7 @@
             var baseUrl = ApiClient.serverAddress();
             var token = ApiClient.accessToken();
             var deviceId = localStorage.getItem('_deviceId2') || self.generateDeviceId();
-            var authHeader = 'MediaBrowser Client="Jellyfin Web", Device="Browser", DeviceId="' + deviceId + '", Version="10.11.0", Token="' + token + '"';
+            var authHeader = 'MediaBrowser Client="Jellyfin Web", Device="Browser", DeviceId="' + deviceId + '", Version="' + CLIENT_VERSION + '", Token="' + token + '"';
             var isImdb = /^tt\d+$/i.test(q);
             results.innerHTML = '<div class="lb-loading-small">Searching…</div>';
             // 1) Local server library
@@ -4154,7 +4163,7 @@
             var baseUrl = ApiClient.serverAddress();
             var token = ApiClient.accessToken();
             var deviceId = localStorage.getItem('_deviceId2') || self.generateDeviceId();
-            var authHeader = 'MediaBrowser Client="Jellyfin Web", Device="Browser", DeviceId="' + deviceId + '", Version="10.11.0", Token="' + token + '"';
+            var authHeader = 'MediaBrowser Client="Jellyfin Web", Device="Browser", DeviceId="' + deviceId + '", Version="' + CLIENT_VERSION + '", Token="' + token + '"';
             var isImdb = /^tt\d+$/i.test(q);
             var body = { Title: q, Type: 'Movie' };
             // Outbound body binds to MediaRequestDto, which has NO [JsonPropertyName] attributes,
@@ -4187,7 +4196,7 @@
             var baseUrl = ApiClient.serverAddress();
             var token = ApiClient.accessToken();
             var deviceId = localStorage.getItem('_deviceId2') || self.generateDeviceId();
-            var authHeader = 'MediaBrowser Client="Jellyfin Web", Device="Browser", DeviceId="' + deviceId + '", Version="10.11.0", Token="' + token + '"';
+            var authHeader = 'MediaBrowser Client="Jellyfin Web", Device="Browser", DeviceId="' + deviceId + '", Version="' + CLIENT_VERSION + '", Token="' + token + '"';
             var title = (data.title || '') + (data.year ? ' (' + data.year + ')' : '');
             var body = { Title: title, Type: data.type || 'Movie', Notes: data.tmdbId ? ('TMDB:' + data.tmdbId) : '' };
             fetch(baseUrl + '/Ratings/Requests', {
@@ -11189,7 +11198,7 @@
             }
 
             // Build the Authorization header value (MediaBrowser scheme)
-            const authHeader = `MediaBrowser Client="Jellyfin Web", Device="Browser", DeviceId="${deviceId}", Version="10.11.0", Token="${accessToken}"`;
+            const authHeader = `MediaBrowser Client="Jellyfin Web", Device="Browser", DeviceId="${deviceId}", Version="${CLIENT_VERSION}", Token="${accessToken}"`;
 
 
             fetch(url, {
@@ -11340,7 +11349,7 @@
 
 
             // Build the Authorization header value (MediaBrowser scheme)
-            const authHeader = `MediaBrowser Client="Jellyfin Web", Device="Browser", DeviceId="${deviceId}", Version="10.11.0", Token="${accessToken}"`;
+            const authHeader = `MediaBrowser Client="Jellyfin Web", Device="Browser", DeviceId="${deviceId}", Version="${CLIENT_VERSION}", Token="${accessToken}"`;
 
             const requestOptions = {
                 method: 'POST',
@@ -11408,7 +11417,7 @@
             const deviceId = ApiClient.deviceId();
             const url = `${baseUrl}/Ratings/Items/${itemId}/Rating`;
 
-            const authHeader = `MediaBrowser Client="Jellyfin Web", Device="Browser", DeviceId="${deviceId}", Version="10.11.0", Token="${accessToken}"`;
+            const authHeader = `MediaBrowser Client="Jellyfin Web", Device="Browser", DeviceId="${deviceId}", Version="${CLIENT_VERSION}", Token="${accessToken}"`;
 
             const requestOptions = {
                 method: 'DELETE',
@@ -11710,7 +11719,7 @@
                 const baseUrl = ApiClient.serverAddress();
                 const accessToken = ApiClient.accessToken();
                 const deviceId = ApiClient.deviceId();
-                const authHeader = `MediaBrowser Client="Jellyfin Web", Device="Browser", DeviceId="${deviceId}", Version="10.11.0", Token="${accessToken}"`;
+                const authHeader = `MediaBrowser Client="Jellyfin Web", Device="Browser", DeviceId="${deviceId}", Version="${CLIENT_VERSION}", Token="${accessToken}"`;
 
                 fetch(`${baseUrl}/Ratings/Items/${itemId}/DetailedRatings`, {
                     method: 'GET',
@@ -11826,7 +11835,7 @@
                 url += `&review=${encodeURIComponent(review)}`;
             }
 
-            const authHeader = `MediaBrowser Client="Jellyfin Web", Device="Browser", DeviceId="${deviceId}", Version="10.11.0", Token="${accessToken}"`;
+            const authHeader = `MediaBrowser Client="Jellyfin Web", Device="Browser", DeviceId="${deviceId}", Version="${CLIENT_VERSION}", Token="${accessToken}"`;
 
             fetch(url, {
                 method: 'POST',
@@ -11905,7 +11914,7 @@
             const baseUrl = ApiClient.serverAddress();
             const accessToken = ApiClient.accessToken();
             const deviceId = ApiClient.deviceId();
-            const authHeader = `MediaBrowser Client="Jellyfin Web", Device="Browser", DeviceId="${deviceId}", Version="10.11.0", Token="${accessToken}"`;
+            const authHeader = `MediaBrowser Client="Jellyfin Web", Device="Browser", DeviceId="${deviceId}", Version="${CLIENT_VERSION}", Token="${accessToken}"`;
 
             fetch(`${baseUrl}/Ratings/Items/${itemId}/DetailedRatings`, {
                 method: 'GET',
@@ -12100,7 +12109,7 @@
             const baseUrl = ApiClient.serverAddress();
             const accessToken = ApiClient.accessToken();
             const deviceId = ApiClient.deviceId();
-            const authHeader = `MediaBrowser Client="Jellyfin Web", Device="Browser", DeviceId="${deviceId}", Version="10.11.0", Token="${accessToken}"`;
+            const authHeader = `MediaBrowser Client="Jellyfin Web", Device="Browser", DeviceId="${deviceId}", Version="${CLIENT_VERSION}", Token="${accessToken}"`;
 
             const url = `${baseUrl}/Ratings/Reviews/${reviewerUserId}/${itemId}/Like?isLike=${isLike}`;
 
@@ -12211,7 +12220,7 @@
             const baseUrl = ApiClient.serverAddress();
             const accessToken = ApiClient.accessToken();
             const deviceId = ApiClient.deviceId();
-            const authHeader = `MediaBrowser Client="Jellyfin Web", Device="Browser", DeviceId="${deviceId}", Version="10.11.0", Token="${accessToken}"`;
+            const authHeader = `MediaBrowser Client="Jellyfin Web", Device="Browser", DeviceId="${deviceId}", Version="${CLIENT_VERSION}", Token="${accessToken}"`;
 
             fetch(`${baseUrl}/Ratings/Items/${itemId}/DetailedRatings`, {
                 method: 'GET',
@@ -12817,7 +12826,7 @@
             const baseUrl = ApiClient.serverAddress();
             const accessToken = ApiClient.accessToken();
             const deviceId = ApiClient.deviceId();
-            const authHeader = `MediaBrowser Client="Jellyfin Web", Device="Browser", DeviceId="${deviceId}", Version="10.11.0", Token="${accessToken}"`;
+            const authHeader = `MediaBrowser Client="Jellyfin Web", Device="Browser", DeviceId="${deviceId}", Version="${CLIENT_VERSION}", Token="${accessToken}"`;
 
             const url = `${baseUrl}/Ratings/Reviews/${reviewerUserId}/${itemId}/Like?isLike=${isLike}`;
 
@@ -12860,7 +12869,7 @@
             const accessToken = ApiClient.accessToken();
             const deviceId = ApiClient.deviceId();
             const currentUserId = ApiClient.getCurrentUserId();
-            const authHeader = `MediaBrowser Client="Jellyfin Web", Device="Browser", DeviceId="${deviceId}", Version="10.11.0", Token="${accessToken}"`;
+            const authHeader = `MediaBrowser Client="Jellyfin Web", Device="Browser", DeviceId="${deviceId}", Version="${CLIENT_VERSION}", Token="${accessToken}"`;
 
             // Create modal overlay
             const overlay = document.createElement('div');
@@ -13061,7 +13070,7 @@
             const accessToken = ApiClient.accessToken();
             const deviceId = ApiClient.deviceId();
             const url = `${baseUrl}/Ratings/Requests/${requestId}/Status?status=processing`;
-            const authHeader = `MediaBrowser Client="Jellyfin Web", Device="Browser", DeviceId="${deviceId}", Version="10.11.0", Token="${accessToken}"`;
+            const authHeader = `MediaBrowser Client="Jellyfin Web", Device="Browser", DeviceId="${deviceId}", Version="${CLIENT_VERSION}", Token="${accessToken}"`;
 
             fetch(url, {
                 method: 'POST',
@@ -13147,7 +13156,7 @@
                 localStorage.setItem('_deviceId2', deviceId);
             }
 
-            const authHeader = `MediaBrowser Client="Jellyfin Web", Device="Browser", DeviceId="${deviceId}", Version="10.11.0", Token="${accessToken}"`;
+            const authHeader = `MediaBrowser Client="Jellyfin Web", Device="Browser", DeviceId="${deviceId}", Version="${CLIENT_VERSION}", Token="${accessToken}"`;
 
             fetch(`${baseUrl}/Ratings/Items/BatchStats?itemIds=${encodeURIComponent(itemIds)}`, {
                 method: 'GET',
@@ -18174,7 +18183,7 @@
 
                 const response = await fetch(searchUrl, {
                     headers: {
-                        'Authorization': `MediaBrowser Client="Jellyfin Web", Device="Firefox", DeviceId="${ApiClient.deviceId()}", Version="10.11.0", Token="${ApiClient.accessToken()}"`
+                        'Authorization': `MediaBrowser Client="Jellyfin Web", Device="Firefox", DeviceId="${ApiClient.deviceId()}", Version="${CLIENT_VERSION}", Token="${ApiClient.accessToken()}"`
                     }
                 });
 
@@ -18343,7 +18352,7 @@
 
                 const response = await fetch(searchUrl, {
                     headers: {
-                        'Authorization': `MediaBrowser Client="Jellyfin Web", Device="Browser", DeviceId="${ApiClient.deviceId()}", Version="10.11.0", Token="${ApiClient.accessToken()}"`
+                        'Authorization': `MediaBrowser Client="Jellyfin Web", Device="Browser", DeviceId="${ApiClient.deviceId()}", Version="${CLIENT_VERSION}", Token="${ApiClient.accessToken()}"`
                     }
                 });
 
@@ -19021,7 +19030,7 @@
             if (mediaLink) url += `&mediaLink=${encodeURIComponent(mediaLink)}`;
             if (rejectionReason) url += `&rejectionReason=${encodeURIComponent(rejectionReason)}`;
 
-            const authHeader = `MediaBrowser Client="Jellyfin Web", Device="Browser", DeviceId="${deviceId}", Version="10.11.0", Token="${accessToken}"`;
+            const authHeader = `MediaBrowser Client="Jellyfin Web", Device="Browser", DeviceId="${deviceId}", Version="${CLIENT_VERSION}", Token="${accessToken}"`;
 
             fetch(url, {
                 method: 'POST',
@@ -19061,7 +19070,7 @@
             const deviceId = ApiClient.deviceId();
             const url = `${baseUrl}/Ratings/Requests/${requestId}`;
 
-            const authHeader = `MediaBrowser Client="Jellyfin Web", Device="Browser", DeviceId="${deviceId}", Version="10.11.0", Token="${accessToken}"`;
+            const authHeader = `MediaBrowser Client="Jellyfin Web", Device="Browser", DeviceId="${deviceId}", Version="${CLIENT_VERSION}", Token="${accessToken}"`;
 
             fetch(url, {
                 method: 'DELETE',
@@ -19236,7 +19245,7 @@
             const deviceId = ApiClient.deviceId();
             const url = `${baseUrl}/Ratings/Requests/${requestId}/Snooze?snoozedUntil=${encodeURIComponent(snoozedUntil)}`;
 
-            const authHeader = `MediaBrowser Client="Jellyfin Web", Device="Browser", DeviceId="${deviceId}", Version="10.11.0", Token="${accessToken}"`;
+            const authHeader = `MediaBrowser Client="Jellyfin Web", Device="Browser", DeviceId="${deviceId}", Version="${CLIENT_VERSION}", Token="${accessToken}"`;
 
             fetch(url, {
                 method: 'POST',
@@ -19275,7 +19284,7 @@
             const deviceId = ApiClient.deviceId();
             const url = `${baseUrl}/Ratings/Requests/${requestId}/Unsnooze`;
 
-            const authHeader = `MediaBrowser Client="Jellyfin Web", Device="Browser", DeviceId="${deviceId}", Version="10.11.0", Token="${accessToken}"`;
+            const authHeader = `MediaBrowser Client="Jellyfin Web", Device="Browser", DeviceId="${deviceId}", Version="${CLIENT_VERSION}", Token="${accessToken}"`;
 
             fetch(url, {
                 method: 'POST',
@@ -19326,7 +19335,7 @@
 
                     const url = `${baseUrl}/Users/${userId}`;
                     const deviceId = ApiClient.deviceId();
-                    const authHeader = `MediaBrowser Client="Jellyfin Web", Device="Browser", DeviceId="${deviceId}", Version="10.11.0", Token="${accessToken}"`;
+                    const authHeader = `MediaBrowser Client="Jellyfin Web", Device="Browser", DeviceId="${deviceId}", Version="${CLIENT_VERSION}", Token="${accessToken}"`;
 
                     fetch(url, {
                         method: 'GET',
@@ -19827,7 +19836,7 @@
             const deviceId = ApiClient.deviceId();
             const url = `${baseUrl}/Ratings/Requests/${requestId}`;
 
-            const authHeader = `MediaBrowser Client="Jellyfin Web", Device="Browser", DeviceId="${deviceId}", Version="10.11.0", Token="${accessToken}"`;
+            const authHeader = `MediaBrowser Client="Jellyfin Web", Device="Browser", DeviceId="${deviceId}", Version="${CLIENT_VERSION}", Token="${accessToken}"`;
 
             const requestData = {
                 Title: title,
@@ -19889,7 +19898,7 @@
             const deviceId = ApiClient.deviceId();
             const url = `${baseUrl}/Ratings/Requests/${requestId}`;
 
-            const authHeader = `MediaBrowser Client="Jellyfin Web", Device="Browser", DeviceId="${deviceId}", Version="10.11.0", Token="${accessToken}"`;
+            const authHeader = `MediaBrowser Client="Jellyfin Web", Device="Browser", DeviceId="${deviceId}", Version="${CLIENT_VERSION}", Token="${accessToken}"`;
 
             fetch(url, {
                 method: 'DELETE',
@@ -20271,7 +20280,7 @@
             const deviceId = ApiClient.deviceId();
             const url = `${baseUrl}/Ratings/Requests/${requestId}/Snooze?snoozedUntil=${encodeURIComponent(snoozedUntil)}`;
 
-            const authHeader = `MediaBrowser Client="Jellyfin Web", Device="Browser", DeviceId="${deviceId}", Version="10.11.0", Token="${accessToken}"`;
+            const authHeader = `MediaBrowser Client="Jellyfin Web", Device="Browser", DeviceId="${deviceId}", Version="${CLIENT_VERSION}", Token="${accessToken}"`;
 
             fetch(url, {
                 method: 'POST',
@@ -20310,7 +20319,7 @@
             const deviceId = ApiClient.deviceId();
             const url = `${baseUrl}/Ratings/Requests/${requestId}/Unsnooze`;
 
-            const authHeader = `MediaBrowser Client="Jellyfin Web", Device="Browser", DeviceId="${deviceId}", Version="10.11.0", Token="${accessToken}"`;
+            const authHeader = `MediaBrowser Client="Jellyfin Web", Device="Browser", DeviceId="${deviceId}", Version="${CLIENT_VERSION}", Token="${accessToken}"`;
 
             fetch(url, {
                 method: 'POST',
@@ -20435,7 +20444,7 @@
                 const deviceId = ApiClient.deviceId();
                 const url = `${baseUrl}/Ratings/Requests`;
 
-                const authHeader = `MediaBrowser Client="Jellyfin Web", Device="Browser", DeviceId="${deviceId}", Version="10.11.0", Token="${accessToken}"`;
+                const authHeader = `MediaBrowser Client="Jellyfin Web", Device="Browser", DeviceId="${deviceId}", Version="${CLIENT_VERSION}", Token="${accessToken}"`;
 
                 const requestData = {
                     Title: title,
@@ -20509,7 +20518,7 @@
                     const deviceId = ApiClient.deviceId();
                     const url = `${baseUrl}/Ratings/Requests`;
 
-                    const authHeader = `MediaBrowser Client="Jellyfin Web", Device="Browser", DeviceId="${deviceId}", Version="10.11.0", Token="${accessToken}"`;
+                    const authHeader = `MediaBrowser Client="Jellyfin Web", Device="Browser", DeviceId="${deviceId}", Version="${CLIENT_VERSION}", Token="${accessToken}"`;
 
                     fetch(url, {
                         method: 'GET',
@@ -20550,7 +20559,7 @@
                     const deviceId = ApiClient.deviceId();
                     const url = `${baseUrl}/Ratings/Requests/My`;
 
-                    const authHeader = `MediaBrowser Client="Jellyfin Web", Device="Browser", DeviceId="${deviceId}", Version="10.11.0", Token="${accessToken}"`;
+                    const authHeader = `MediaBrowser Client="Jellyfin Web", Device="Browser", DeviceId="${deviceId}", Version="${CLIENT_VERSION}", Token="${accessToken}"`;
 
                     fetch(url, {
                         method: 'GET',
@@ -20591,7 +20600,7 @@
                     const deviceId = ApiClient.deviceId();
                     const url = `${baseUrl}/Ratings/DeletionRequests`;
 
-                    const authHeader = `MediaBrowser Client="Jellyfin Web", Device="Browser", DeviceId="${deviceId}", Version="10.11.0", Token="${accessToken}"`;
+                    const authHeader = `MediaBrowser Client="Jellyfin Web", Device="Browser", DeviceId="${deviceId}", Version="${CLIENT_VERSION}", Token="${accessToken}"`;
 
                     fetch(url, {
                         method: 'GET',
@@ -20657,7 +20666,7 @@
                 const baseUrl = ApiClient.serverAddress();
                 const accessToken = ApiClient.accessToken();
                 const deviceId = ApiClient.deviceId();
-                const authHeader = `MediaBrowser Client="Jellyfin Web", Device="Browser", DeviceId="${deviceId}", Version="10.11.0", Token="${accessToken}"`;
+                const authHeader = `MediaBrowser Client="Jellyfin Web", Device="Browser", DeviceId="${deviceId}", Version="${CLIENT_VERSION}", Token="${accessToken}"`;
 
                 // Disable the button while submitting
                 if (btnElement) {
@@ -20852,7 +20861,7 @@
                 const baseUrl = ApiClient.serverAddress();
                 const accessToken = ApiClient.accessToken();
                 const deviceId = ApiClient.deviceId();
-                const authHeader = `MediaBrowser Client="Jellyfin Web", Device="Browser", DeviceId="${deviceId}", Version="10.11.0", Token="${accessToken}"`;
+                const authHeader = `MediaBrowser Client="Jellyfin Web", Device="Browser", DeviceId="${deviceId}", Version="${CLIENT_VERSION}", Token="${accessToken}"`;
 
                 let url = `${baseUrl}/Ratings/DeletionRequests/${requestId}/Action?action=${action}`;
                 if (delayDays) url += `&delayDays=${delayDays}`;
@@ -20988,7 +20997,7 @@
                 const baseUrl = ApiClient.serverAddress();
                 const accessToken = ApiClient.accessToken();
                 const deviceId = ApiClient.deviceId();
-                const authHeader = `MediaBrowser Client="Jellyfin Web", Device="Browser", DeviceId="${deviceId}", Version="10.11.0", Token="${accessToken}"`;
+                const authHeader = `MediaBrowser Client="Jellyfin Web", Device="Browser", DeviceId="${deviceId}", Version="${CLIENT_VERSION}", Token="${accessToken}"`;
 
                 return fetch(`${baseUrl}/Ratings/Bans?banType=${banType}`, {
                     method: 'GET',
@@ -21007,7 +21016,7 @@
                 const baseUrl = ApiClient.serverAddress();
                 const accessToken = ApiClient.accessToken();
                 const deviceId = ApiClient.deviceId();
-                const authHeader = `MediaBrowser Client="Jellyfin Web", Device="Browser", DeviceId="${deviceId}", Version="10.11.0", Token="${accessToken}"`;
+                const authHeader = `MediaBrowser Client="Jellyfin Web", Device="Browser", DeviceId="${deviceId}", Version="${CLIENT_VERSION}", Token="${accessToken}"`;
 
                 return fetch(`${baseUrl}/Ratings/Bans/Check?banType=${banType}`, {
                     method: 'GET',
@@ -21026,7 +21035,7 @@
             const baseUrl = ApiClient.serverAddress();
             const accessToken = ApiClient.accessToken();
             const deviceId = ApiClient.deviceId();
-            const authHeader = `MediaBrowser Client="Jellyfin Web", Device="Browser", DeviceId="${deviceId}", Version="10.11.0", Token="${accessToken}"`;
+            const authHeader = `MediaBrowser Client="Jellyfin Web", Device="Browser", DeviceId="${deviceId}", Version="${CLIENT_VERSION}", Token="${accessToken}"`;
 
             return fetch(`${baseUrl}/Ratings/Bans?userId=${userId}&banType=${banType}&duration=${duration}`, {
                 method: 'POST',
@@ -21042,7 +21051,7 @@
             const baseUrl = ApiClient.serverAddress();
             const accessToken = ApiClient.accessToken();
             const deviceId = ApiClient.deviceId();
-            const authHeader = `MediaBrowser Client="Jellyfin Web", Device="Browser", DeviceId="${deviceId}", Version="10.11.0", Token="${accessToken}"`;
+            const authHeader = `MediaBrowser Client="Jellyfin Web", Device="Browser", DeviceId="${deviceId}", Version="${CLIENT_VERSION}", Token="${accessToken}"`;
 
             return fetch(`${baseUrl}/Ratings/Bans/${banId}`, {
                 method: 'DELETE',
@@ -21165,7 +21174,7 @@
                 const deviceId = ApiClient.deviceId();
                 const url = `${baseUrl}/Ratings/Requests/${requestId}`;
 
-                const authHeader = `MediaBrowser Client="Jellyfin Web", Device="Browser", DeviceId="${deviceId}", Version="10.11.0", Token="${accessToken}"`;
+                const authHeader = `MediaBrowser Client="Jellyfin Web", Device="Browser", DeviceId="${deviceId}", Version="${CLIENT_VERSION}", Token="${accessToken}"`;
 
                 fetch(url, {
                     method: 'DELETE',
@@ -21231,7 +21240,7 @@
                     url += `&rejectionReason=${encodeURIComponent(rejectionReason)}`;
                 }
 
-                const authHeader = `MediaBrowser Client="Jellyfin Web", Device="Browser", DeviceId="${deviceId}", Version="10.11.0", Token="${accessToken}"`;
+                const authHeader = `MediaBrowser Client="Jellyfin Web", Device="Browser", DeviceId="${deviceId}", Version="${CLIENT_VERSION}", Token="${accessToken}"`;
 
                 fetch(url, {
                     method: 'POST',
@@ -21946,7 +21955,7 @@
                 localStorage.setItem('_deviceId2', deviceId);
             }
 
-            const authHeader = `MediaBrowser Client="Jellyfin Web", Device="Browser", DeviceId="${deviceId}", Version="10.11.0", Token="${accessToken}"`;
+            const authHeader = `MediaBrowser Client="Jellyfin Web", Device="Browser", DeviceId="${deviceId}", Version="${CLIENT_VERSION}", Token="${accessToken}"`;
 
             fetch(`${baseUrl}/Ratings/Notifications/Test`, {
                 method: 'POST',
@@ -22309,7 +22318,7 @@
             const baseUrl = ApiClient.serverAddress();
             const accessToken = ApiClient.accessToken();
             const deviceId = ApiClient.deviceId();
-            const authHeader = `MediaBrowser Client="Jellyfin Web", Device="Browser", DeviceId="${deviceId}", Version="10.11.0", Token="${accessToken}"`;
+            const authHeader = `MediaBrowser Client="Jellyfin Web", Device="Browser", DeviceId="${deviceId}", Version="${CLIENT_VERSION}", Token="${accessToken}"`;
 
             const fetchUrl = `${baseUrl}/Items?ParentId=${parentId}&IncludeItemTypes=Movie,Series&Recursive=true&Fields=Genres,PrimaryImageAspectRatio,PremiereDate,DateCreated,CommunityRating&EnableTotalRecordCount=true&Limit=10000`;
             // Get all items to extract genres
@@ -23172,7 +23181,7 @@
             const accessToken = ApiClient.accessToken();
 
             let deviceId = localStorage.getItem('_deviceId2') || self.generateDeviceId();
-            const authHeader = `MediaBrowser Client="Jellyfin Web", Device="Browser", DeviceId="${deviceId}", Version="10.11.0", Token="${accessToken}"`;
+            const authHeader = `MediaBrowser Client="Jellyfin Web", Device="Browser", DeviceId="${deviceId}", Version="${CLIENT_VERSION}", Token="${accessToken}"`;
 
             // Detect current library from URL (parentId or topParentId)
             const hash = window.location.hash || '';
@@ -23405,7 +23414,7 @@
             const userId = ApiClient.getCurrentUserId();
 
             let deviceId = localStorage.getItem('_deviceId2') || self.generateDeviceId();
-            const authHeader = `MediaBrowser Client="Jellyfin Web", Device="Browser", DeviceId="${deviceId}", Version="10.11.0", Token="${accessToken}"`;
+            const authHeader = `MediaBrowser Client="Jellyfin Web", Device="Browser", DeviceId="${deviceId}", Version="${CLIENT_VERSION}", Token="${accessToken}"`;
 
             // Build URL - if no parentId, get all items
             let url = `${baseUrl}/Users/${userId}/Items?`;
@@ -23512,7 +23521,7 @@
                 localStorage.setItem('_deviceId2', deviceId);
             }
 
-            const authHeader = `MediaBrowser Client="Jellyfin Web", Device="Browser", DeviceId="${deviceId}", Version="10.11.0", Token="${accessToken}"`;
+            const authHeader = `MediaBrowser Client="Jellyfin Web", Device="Browser", DeviceId="${deviceId}", Version="${CLIENT_VERSION}", Token="${accessToken}"`;
 
             // Split into batches of 100 (API limit)
             const batchSize = 100;
@@ -23664,7 +23673,7 @@
                 localStorage.setItem('_deviceId2', deviceId);
             }
 
-            const authHeader = `MediaBrowser Client="Jellyfin Web", Device="Browser", DeviceId="${deviceId}", Version="10.11.0", Token="${accessToken}"`;
+            const authHeader = `MediaBrowser Client="Jellyfin Web", Device="Browser", DeviceId="${deviceId}", Version="${CLIENT_VERSION}", Token="${accessToken}"`;
 
             fetch(`${baseUrl}/Ratings/Items/BatchStats?itemIds=${encodeURIComponent(uncachedIds.join(','))}`, {
                 method: 'GET',
@@ -23739,7 +23748,7 @@
             if (window.ApiClient && ApiClient._serverInfo) {
                 const token = ApiClient._serverInfo.AccessToken;
                 if (token) {
-                    headers['Authorization'] = 'MediaBrowser Client="Jellyfin Web", Device="Browser", DeviceId="' + (ApiClient._deviceId || 'unknown') + '", Version="10.11.0", Token="' + token + '"';
+                    headers['Authorization'] = 'MediaBrowser Client="Jellyfin Web", Device="Browser", DeviceId="' + (ApiClient._deviceId || 'unknown') + '", Version="' + CLIENT_VERSION + '", Token="' + token + '"';
                 }
             }
             return headers;
@@ -25356,7 +25365,7 @@
             // Build auth header for Jellyfin
             const accessToken = ApiClient.accessToken();
             const deviceId = ApiClient.deviceId();
-            const authHeader = 'MediaBrowser Client="Jellyfin Web", Device="Browser", DeviceId="' + deviceId + '", Version="10.11.0", Token="' + accessToken + '"';
+            const authHeader = 'MediaBrowser Client="Jellyfin Web", Device="Browser", DeviceId="' + deviceId + '", Version="' + CLIENT_VERSION + '", Token="' + accessToken + '"';
 
             fetch(url, {
                 method: 'GET',

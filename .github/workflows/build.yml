@@ -99,6 +99,35 @@ jobs:
             console.log('manifest OK -', m[0].versions.length, 'versions, latest', m[0].versions[0].version);
           "
 
+      # The ABI declared in the manifest describes the artifact, so it must be the Jellyfin the
+      # csproj actually compiles against. This is the check that would have caught a net9.0/10.11
+      # build being installed on a 12.1 server with meta.json hand-edited to claim 12.1.0.0.
+      - name: Check targetAbi matches the Jellyfin packages
+        shell: bash
+        run: |
+          set -euo pipefail
+          jf_version=$(grep -oPm1 '(?<=Include="Jellyfin.Controller" Version=")[^"]+' Jellyfin.Plugin.Ratings.csproj)
+          abi=$(node -p "require('./manifest.json')[0].versions[0].targetAbi")
+          want="${jf_version}.0"
+          echo "csproj Jellyfin.Controller: $jf_version"
+          echo "manifest targetAbi:         $abi"
+          [ "$abi" = "$want" ] || {
+            echo "::error::manifest targetAbi ($abi) does not match the Jellyfin packages ($want) - the release would claim an ABI it was not built for"
+            exit 1
+          }
+
+          # The JS fallback client version is only used when ?v= is missing, but a stale one is the
+          # same silent drift (46 call sites announced 10.11.0 on a 12.1 server).
+          csproj_version=$(grep -oPm1 '(?<=<Version>)[^<]+' Jellyfin.Plugin.Ratings.csproj)
+          for f in Web/ratings.js Pages/ratings_dashboard.js; do
+            got=$(grep -oPm1 "decodeURIComponent\(m\[1\]\)\) \|\| '[^']+'" "$f" | grep -oP "'[^']+'" | tr -d "'")
+            echo "$f fallback: $got"
+            [ "$got" = "$csproj_version" ] || {
+              echo "::error::$f client-version fallback ($got) does not match the csproj version ($csproj_version)"
+              exit 1
+            }
+          done
+
       # The csproj version and the newest manifest entry must agree, or Jellyfin offers an update
       # that installs a differently-versioned DLL.
       - name: Check version consistency

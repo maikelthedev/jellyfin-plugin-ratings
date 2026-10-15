@@ -403,9 +403,18 @@ export default function (view, params) {
     // MediaBrowser scheme below is unchanged and is accepted by 10.x and 12.x alike; only the
     // header it travels in had to change.
     function getAuthHeader() {
+    // The client version this plugin announces to the Jellyfin API ("MediaBrowser Client=... Version=").
+    // Taken from our own script URL's ?v=<pluginVersion>, which the server injects
+    // (ScriptInjectionMiddleware) - a hardcoded server version is what silently drifted to
+    // "10.11.0" across 1 call sites while the server ran 12.1.
+    const CLIENT_VERSION = (function () {
+        const m = /[?&]v=([^&]+)/.exec(SCRIPT_SRC || '');
+        return (m && decodeURIComponent(m[1])) || '1.0.442.0';
+    })();
+
         const token = window.ApiClient.accessToken();
         const deviceId = localStorage.getItem('_deviceId2') || 'unknown';
-        return `MediaBrowser Client="Jellyfin Web", Device="Browser", DeviceId="${deviceId}", Version="10.11.0", Token="${token}"`;
+        return `MediaBrowser Client="Jellyfin Web", Device="Browser", DeviceId="${deviceId}", Version="${CLIENT_VERSION}", Token="${token}"`;
     }
 
     function escapeHtml(text) {
