@@ -17,6 +17,13 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- tests/logic is its own project. MSBuild's default Compile glob excludes only THIS project's
+         bin/obj, not a nested project's, so without this the plugin would compile the test project's
+         generated AssemblyInfo.cs too (duplicate assembly attributes). -->
+    <Compile Remove="tests/**" />
+  </ItemGroup>
+
+  <ItemGroup>
     <EmbeddedResource Include="Configuration\*.html" />
     <!-- ratings.js and ratings.css are embedded as MINIFIED copies (see the statically-declared
          resources and the Minify* targets below), so exclude the raw sources here to avoid
