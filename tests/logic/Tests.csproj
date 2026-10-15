@@ -20,6 +20,7 @@
     <Compile Include="../../NfoMirror.cs" />
     <Compile Include="../../CollectionBackup.cs" />
     <Compile Include="../../FavoriteBackup.cs" />
+    <Compile Include="../../ShareResolver.cs" />
     <Compile Include="../../Models/UserRating.cs" />
     <Compile Include="Program.cs" />
   </ItemGroup>

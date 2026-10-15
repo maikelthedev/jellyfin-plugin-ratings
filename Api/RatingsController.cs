@@ -2025,40 +2025,7 @@ namespace Jellyfin.Plugin.Ratings.Api
         /// <param name="item">The item the client addressed.</param>
         /// <returns>The item to store against, plus the title and media type to remember for it.</returns>
         private (MediaBrowser.Controller.Entities.BaseItem Item, string Title, string MediaType) ResolveRatingTarget(MediaBrowser.Controller.Entities.BaseItem item)
-        {
-            if (item is MediaBrowser.Controller.Entities.TV.Episode episode)
-            {
-                var season = episode.SeasonId != Guid.Empty ? _libraryManager.GetItemById(episode.SeasonId) : null;
-
-                // Only a vertical drama is reviewed as a whole; a landscape episode is its own unit.
-                if (season != null && IsVertical(episode))
-                {
-                    var series = episode.SeriesId != Guid.Empty ? _libraryManager.GetItemById(episode.SeriesId) : null;
-                    return (season, series?.Name ?? episode.SeriesName ?? item.Name, "Series");
-                }
-
-                return (item, item.Name, "Series");
-            }
-
-            // A single-season vertical show (every vertical drama) is reviewed on its season, which
-            // is what the season and episode pages both show. A multi-season or landscape show keeps
-            // its own item.
-            if (item is MediaBrowser.Controller.Entities.TV.Series seriesItem && IsVertical(seriesItem))
-            {
-                var seasons = _libraryManager.GetItemList(new MediaBrowser.Controller.Entities.InternalItemsQuery
-                {
-                    ParentId = seriesItem.Id,
-                    IncludeItemTypes = new[] { Jellyfin.Data.Enums.BaseItemKind.Season },
-                    Recursive = true
-                });
-                if (seasons.Count == 1)
-                {
-                    return (seasons[0], seriesItem.Name, "Series");
-                }
-            }
-
-            return (item, item.Name, item is MediaBrowser.Controller.Entities.TV.Series ? "Series" : "Movie");
-        }
+            => RatingTargets.Resolve(_libraryManager, item);
 
         /// <summary>
         /// A human name for an item. Ratings now live on a season, whose own name ("Season 1") says
@@ -2112,24 +2079,7 @@ namespace Jellyfin.Plugin.Ratings.Api
         /// <param name="item">A series, season or episode.</param>
         /// <returns>True when the show's video is portrait.</returns>
         private bool IsVertical(MediaBrowser.Controller.Entities.BaseItem item)
-        {
-            var probe = item;
-            if (item is MediaBrowser.Controller.Entities.TV.Series || item is MediaBrowser.Controller.Entities.TV.Season)
-            {
-                var episodes = _libraryManager.GetItemList(new MediaBrowser.Controller.Entities.InternalItemsQuery
-                {
-                    ParentId = item.Id,
-                    IncludeItemTypes = new[] { Jellyfin.Data.Enums.BaseItemKind.Episode },
-                    Recursive = true
-                });
-                probe = episodes.OrderBy(e => e.IndexNumber ?? int.MaxValue).FirstOrDefault() ?? item;
-            }
-
-            var video = probe.GetMediaStreams()?.FirstOrDefault(s => s.Type == MediaBrowser.Model.Entities.MediaStreamType.Video);
-            return video?.Width.HasValue == true
-                && video.Height.HasValue
-                && video.Height.Value > video.Width.Value;
-        }
+            => RatingTargets.IsVertical(_libraryManager, item);
 
         /// <summary>
         /// Resolves a raw item id to the id a rating is stored against (see ResolveRatingTarget).

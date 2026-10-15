@@ -265,5 +265,28 @@ Check(alreadyStarred.Count == 0, "a star the user still has is not touched");
 var (fl, fg) = FavoriteBackup.Diff(FavoriteBackup.Json(fav with { Items = new List<StarredItem> { fav.Items[0], fav.Items[1] } }), fav);
 Check(fl.Count == 0 && fg.Count == 1, "a detached star appearing counts as a change", string.Join(",", fg));
 
+
+Console.WriteLine("== share links always point at the season ==");
+Guid E = Guid.Parse("11111111-1111-1111-1111-111111111111"),
+     S = Guid.Parse("22222222-2222-2222-2222-222222222222"),
+     X = Guid.Parse("33333333-3333-3333-3333-333333333333"),
+     M = Guid.Parse("44444444-4444-4444-4444-444444444444");
+var (epCand, epPage) = ShareResolver.Resolve(E, S, X);
+Check(epPage == S, "an EPISODE share opens the season page, not the episode");
+Check(epCand.SequenceEqual(new[] { E, S, X }), "an episode's review is looked for on the episode, then the season, then the series", string.Join(",", epCand));
+var (snCand, snPage) = ShareResolver.Resolve(S, S, X);
+Check(snPage == S && snCand.SequenceEqual(new[] { S, X }), "a SEASON share opens itself, and falls back to the series for a legacy series-level review");
+var (srCand, srPage) = ShareResolver.Resolve(X, S, X);
+Check(srPage == S, "a SERIES share opens the season page, not the series");
+Check(srCand.SequenceEqual(new[] { X, S }), "a series share looks on the series (legacy records) then the season", string.Join(",", srCand));
+var (mvCand, mvPage) = ShareResolver.Resolve(M, null, null);
+Check(mvPage == M && mvCand.SequenceEqual(new[] { M }), "a film has no season, so it points at itself");
+var (lsCand, lsPage) = ShareResolver.Resolve(E, E, null);
+Check(lsPage == E && lsCand.SequenceEqual(new[] { E }), "an episode with no season stays its own target and is not duplicated");
+var (selfCand, selfPage) = ShareResolver.Resolve(X, X, X);
+Check(selfPage == X && selfCand.Count == 1, "a landscape show (target == itself) is not listed twice");
+var (noTargetCand, noTargetPage) = ShareResolver.Resolve(X, Guid.Empty, null);
+Check(noTargetPage == X && noTargetCand.Count == 1, "an empty target id falls back to the requested item");
+
 Console.WriteLine(failures == 0 ? "\nALL PASS" : $"\n{failures} FAILURE(S)");
 return failures == 0 ? 0 : 1;

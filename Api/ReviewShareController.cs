@@ -6,6 +6,7 @@ using System.Text;
 using System.Threading.Tasks;
 using Jellyfin.Plugin.Ratings.Configuration;
 using Jellyfin.Plugin.Ratings.Data;
+using Jellyfin.Plugin.Ratings.Models;
 using MediaBrowser.Controller;
 using MediaBrowser.Controller.Entities;
 using MediaBrowser.Controller.Library;
@@ -182,17 +183,33 @@ namespace Jellyfin.Plugin.Ratings.Api
         /// </summary>
         private ReviewView? Build(Guid userId, Guid itemId)
         {
-            var rating = _repository.GetUserRating(userId, itemId);
+            var item = _libraryManager.GetItemById(itemId);
+
+            // A rating is filed against the item's rating target - the season, for a vertical drama -
+            // never against the series or episode the button happened to be pressed on, so a share
+            // started outside the season has to look the review up on the season. Asking for the id it
+            // was handed is what made the link 404 from the series and episode pages.
+            var target = item != null ? RatingTargets.Resolve(_libraryManager, item).Item : null;
+            var (candidates, pageId) = ShareResolver.Resolve(itemId, target?.Id, RatingTargets.SeriesIdOf(item));
+
+            UserRating? rating = null;
+            foreach (var candidate in candidates)
+            {
+                rating = _repository.GetUserRating(userId, candidate);
+                if (rating != null)
+                {
+                    break;
+                }
+            }
+
             if (rating == null)
             {
                 return null;
             }
 
-            var item = _libraryManager.GetItemById(itemId);
-
             // The snapshot fields exist exactly so a rating stays meaningful after its item leaves
             // the library, so the card never depends on the item still being there.
-            var title = FirstNonEmpty(item?.Name, rating.Title, "Jellyfin")!;
+            var title = FirstNonEmpty(rating.Title, item?.Name, "Jellyfin")!;
             var username = _userManager.GetUserById(userId)?.Username ?? "someone";
             var reviewText = Flatten(rating.ReviewText);
             var stars = Stars(rating.Rating, out var filled);
@@ -203,12 +220,9 @@ namespace Jellyfin.Plugin.Ratings.Api
             // Only advertise an image that can actually be fetched; a 404 gives a crawler nothing
             // and no other symptom at all. Prefer Jellyfin's own poster while the item exists, and
             // fall back to the poster snapshot kept with the rating.
-            string? imageUrl = null;
-            if (item != null && item.GetImageInfo(ImageType.Primary, 0) != null)
-            {
-                imageUrl = $"{baseUrl}/Items/{itemId:N}/Images/Primary?maxHeight=900&quality=90";
-            }
-            else if (!string.IsNullOrWhiteSpace(rating.PosterUrl))
+            string? imageUrl = PosterFor(target, baseUrl)
+                ?? PosterFor(item, baseUrl);
+            if (imageUrl == null && !string.IsNullOrWhiteSpace(rating.PosterUrl))
             {
                 imageUrl = rating.PosterUrl!.StartsWith("http", StringComparison.OrdinalIgnoreCase)
                     ? rating.PosterUrl
@@ -237,10 +251,23 @@ namespace Jellyfin.Plugin.Ratings.Api
                 ReviewText = reviewText,
                 Username = username,
                 ImageUrl = imageUrl,
-                ShareUrl = $"{baseUrl}/Ratings/Share/{userId:N}/{itemId:N}",
-                WebUrl = $"{baseUrl}/web/#/details?id={itemId:N}",
+                ShareUrl = $"{baseUrl}/Ratings/Share/{userId:N}/{pageId:N}",
+                WebUrl = $"{baseUrl}/web/#/details?id={pageId:N}",
                 SiteName = siteName
             };
+        }
+
+        /// <summary>
+        /// A Jellyfin poster URL for an item, when it has one.
+        /// </summary>
+        /// <param name="item">The item, or null.</param>
+        /// <param name="baseUrl">The public base URL.</param>
+        /// <returns>The URL, or null.</returns>
+        private static string? PosterFor(MediaBrowser.Controller.Entities.BaseItem? item, string baseUrl)
+        {
+            return item != null && item.GetImageInfo(ImageType.Primary, 0) != null
+                ? $"{baseUrl}/Items/{item.Id:N}/Images/Primary?maxHeight=900&quality=90"
+                : null;
         }
 
         /// <summary>
