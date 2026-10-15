@@ -9,7 +9,10 @@ updates:
     labels:
       - "dependencies"
     ignore:
-      # Jellyfin packages must stay at 10.11.0 for broad server compatibility
-      # Only update manually when ready to drop support for older servers
+      # Pinned to the ABI of the server this plugin runs on (Jellyfin 12.1 on .NET 10):
+      # Jellyfin breaks plugin ABI across major versions, and a build for the wrong one only
+      # loads if meta.json is hand-edited to lie about targetAbi - which is exactly what had
+      # happened on i710700 (a net9.0/10.11 DLL in a folder claiming targetAbi 12.1.0.0).
+      # Bump both packages together with the csproj's TargetFramework, deliberately.
       - dependency-name: "Jellyfin.Controller"
       - dependency-name: "Jellyfin.Model"

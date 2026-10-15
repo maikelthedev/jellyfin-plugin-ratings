@@ -10,7 +10,7 @@ Every number below was measured from this working tree, not estimated.
 | Artifact | Size |
 |---|---|
 | `Web/ratings.js` (source) | 1,687,932 B |
-| `obj/Release/net9.0/ratings.min.js` (what actually ships) | 1,030,715 B |
+| `obj/Release/net10.0/ratings.min.js` (what actually ships) | 1,030,715 B |
 | &nbsp;&nbsp;└ CSS template literal, **unminified** | 373,752 B (36%) |
 | &nbsp;&nbsp;└ translations block (16 languages), **all shipped** | ~220,000 B (21%) |
 | &nbsp;&nbsp;└ actual executable code | ~437,000 B (43%) |

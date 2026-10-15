@@ -1,7 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFramework>net9.0</TargetFramework>
+    <TargetFramework>net10.0</TargetFramework>
     <AssemblyName>Jellyfin.Plugin.Ratings</AssemblyName>
     <RootNamespace>Jellyfin.Plugin.Ratings</RootNamespace>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
@@ -12,8 +12,8 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="Jellyfin.Controller" Version="10.11.0" />
-    <PackageReference Include="Jellyfin.Model" Version="10.11.0" />
+    <PackageReference Include="Jellyfin.Controller" Version="12.1.0" />
+    <PackageReference Include="Jellyfin.Model" Version="12.1.0" />
   </ItemGroup>
 
   <ItemGroup>

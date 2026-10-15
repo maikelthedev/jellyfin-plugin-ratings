@@ -22,7 +22,7 @@ jobs:
       - name: Set up .NET
         uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: '9.0.x'
+          dotnet-version: '10.0.x'
 
       - name: Set up Node
         uses: actions/setup-node@v4
@@ -41,8 +41,8 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          min_js=obj/Release/net9.0/ratings.min.js
-          min_css=obj/Release/net9.0/ratings.min.css
+          min_js=obj/Release/net10.0/ratings.min.js
+          min_css=obj/Release/net10.0/ratings.min.css
           for f in "$min_js" "$min_css"; do
             [ -f "$f" ] || { echo "::error::$f was not produced"; exit 1; }
           done
@@ -69,7 +69,7 @@ jobs:
       # embedded resource, so a broken script compiles perfectly and fails only in the browser.
       - name: Syntax-check JavaScript
         run: |
-          node --check obj/Release/net9.0/ratings.min.js
+          node --check obj/Release/net10.0/ratings.min.js
           node --check Web/ratings.js
           for f in Web/i18n/*.js; do node --check "$f"; done
 
@@ -119,5 +119,5 @@ jobs:
         with:
           name: Jellyfin.Plugin.Ratings
           path: |
-            bin/Release/net9.0/Jellyfin.Plugin.Ratings.dll
+            bin/Release/net10.0/Jellyfin.Plugin.Ratings.dll
           retention-days: 14
