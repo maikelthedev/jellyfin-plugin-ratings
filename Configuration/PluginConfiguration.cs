@@ -256,6 +256,27 @@ namespace Jellyfin.Plugin.Ratings.Configuration
         public bool RestoreCollections { get; set; }
 
         /// <summary>
+        /// Gets or sets a value indicating whether every user's favourites are backed up to
+        /// BackupFavoritesTo on a schedule. A favourite is user data keyed by item id, so a title that
+        /// moves or is re-imported loses every star it had (Jellyfin parks the orphaned star on a
+        /// placeholder item that records no name). Default true.
+        /// </summary>
+        public bool BackupFavorites { get; set; } = true;
+
+        /// <summary>
+        /// Gets or sets where the favourite backup is written: one .json (diffable) and one .md
+        /// (readable) per user, an index, a CHANGES.md log and a history/ folder.
+        /// </summary>
+        public string? BackupFavoritesTo { get; set; } = "/mnt/sata3/jellyfin/favorites";
+
+        /// <summary>
+        /// Gets or sets a value indicating whether the favourite backup is also restored: stars are
+        /// put back when the id the backup recorded is gone (matched by name). An item that still
+        /// exists but is no longer starred was un-starred on purpose and is left alone.
+        /// </summary>
+        public bool RestoreFavorites { get; set; } = true;
+
+        /// <summary>
         /// Gets or sets the maximum rating value.
         /// </summary>
         public int MaxRating { get; set; }

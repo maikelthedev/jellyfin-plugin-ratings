@@ -107,6 +107,29 @@
                                     <div class="fieldDescription">Where the collection backup is written.</div>
                                 </div>
                                 <label class="emby-checkbox-label">
+                                    <input id="chkBackupFavorites" type="checkbox" is="emby-checkbox" />
+                                    <span>Back up favourites (every user's stars)</span>
+                                </label>
+                                <div class="fieldDescription checkboxFieldDescription">
+                                    Writes each user's favourites — names, types, years and <em>paths</em> — to the
+                                    folder below. A favourite is user data keyed by item id, so a title that moves or
+                                    is re-imported loses its stars: Jellyfin parks them on a placeholder item that
+                                    records no name. Runs daily (Scheduled Tasks → “Back up favourites”).
+                                </div>
+                                <div class="inputContainer">
+                                    <input id="txtFavoritesBackupPath" type="text" is="emby-input" label="Favourites backup folder" />
+                                </div>
+                                <label class="emby-checkbox-label">
+                                    <input id="chkRestoreFavorites" type="checkbox" is="emby-checkbox" />
+                                    <span>Restore favourites from the backup</span>
+                                </label>
+                                <div class="fieldDescription checkboxFieldDescription">
+                                    Re-stars items by <em>name</em>, but only when the id the backup recorded is gone —
+                                    an item that still exists without a star was un-starred on purpose and is left
+                                    alone. Runs daily at 04:05, before the backup.
+                                </div>
+
+                                <label class="emby-checkbox-label">
                                     <input id="chkRestoreCollections" type="checkbox" is="emby-checkbox" />
                                     <span>Also restore collections from the backup</span>
                                 </label>
@@ -2862,6 +2885,9 @@
                     document.querySelector('#chkImportRatingsFromNfo').checked = config.ImportRatingsFromNfo === true;
                     document.querySelector('#chkBackupCollections').checked = config.BackupCollections !== false;
                     document.querySelector('#chkRestoreCollections').checked = config.RestoreCollections === true;
+                    document.querySelector('#chkBackupFavorites').checked = config.BackupFavorites !== false;
+                    document.querySelector('#chkRestoreFavorites').checked = config.RestoreFavorites !== false;
+                    document.querySelector('#txtFavoritesBackupPath').value = config.BackupFavoritesTo || '/mnt/sata3/jellyfin/favorites';
                     document.querySelector('#txtCollectionsBackupPath').value = config.BackupCollectionsTo || '/mnt/sata3/jellyfin/collections';
 
                     // One-time "sync existing ratings to Jellyfin" backfill button.
@@ -3251,6 +3277,9 @@
                     config.ImportRatingsFromNfo = document.querySelector('#chkImportRatingsFromNfo').checked;
                     config.BackupCollections = document.querySelector('#chkBackupCollections').checked;
                     config.RestoreCollections = document.querySelector('#chkRestoreCollections').checked;
+                    config.BackupFavorites = document.querySelector('#chkBackupFavorites').checked;
+                    config.RestoreFavorites = document.querySelector('#chkRestoreFavorites').checked;
+                    config.BackupFavoritesTo = document.querySelector('#txtFavoritesBackupPath').value || '/mnt/sata3/jellyfin/favorites';
                     config.BackupCollectionsTo = document.querySelector('#txtCollectionsBackupPath').value || '/mnt/sata3/jellyfin/collections';
                     config.MinRating = parseInt(document.querySelector('#txtMinRating').value);
                     config.MaxRating = parseInt(document.querySelector('#txtMaxRating').value);

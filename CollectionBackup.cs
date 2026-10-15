@@ -333,12 +333,23 @@ namespace Jellyfin.Plugin.Ratings
         /// </summary>
         /// <param name="member">The backed-up member.</param>
         /// <returns>The key.</returns>
-        public static string MemberKey(CollectionMember member)
+        public static string MemberKey(CollectionMember member) =>
+            MemberKey(member.Title, member.Type, member.Series);
+
+        /// <summary>
+        /// The same key, from loose parts, so the favourites backup can use the identical matching
+        /// rules without pretending a star is a collection member.
+        /// </summary>
+        /// <param name="title">The item's title.</param>
+        /// <param name="type">Its Jellyfin type name.</param>
+        /// <param name="series">Its series, for a season or episode.</param>
+        /// <returns>The key.</returns>
+        public static string MemberKey(string? title, string? type, string? series)
         {
-            var season = SeasonNumberOf(member);
-            return season.HasValue && !string.IsNullOrWhiteSpace(member.Series)
-                ? NameKey(member.Series) + "|s" + season.Value.ToString(CultureInfo.InvariantCulture)
-                : NameKey(member.Title);
+            var season = SeasonNumberOf(type, title);
+            return season.HasValue && !string.IsNullOrWhiteSpace(series)
+                ? NameKey(series) + "|s" + season.Value.ToString(CultureInfo.InvariantCulture)
+                : NameKey(title);
         }
 
         /// <summary>
@@ -346,14 +357,23 @@ namespace Jellyfin.Plugin.Ratings
         /// </summary>
         /// <param name="member">The backed-up member.</param>
         /// <returns>The number, or null.</returns>
-        public static int? SeasonNumberOf(CollectionMember member)
+        public static int? SeasonNumberOf(CollectionMember member) =>
+            member.Missing ? null : SeasonNumberOf(member.Type, member.Title);
+
+        /// <summary>
+        /// The season number a member refers to, when it is a season: taken from its "Season N" title.
+        /// </summary>
+        /// <param name="type">Its Jellyfin type name.</param>
+        /// <param name="title">Its title.</param>
+        /// <returns>The number, or null.</returns>
+        public static int? SeasonNumberOf(string? type, string? title)
         {
-            if (member.Missing || !string.Equals(member.Type, "Season", StringComparison.OrdinalIgnoreCase))
+            if (!string.Equals(type, "Season", StringComparison.OrdinalIgnoreCase))
             {
                 return null;
             }
 
-            var m = Regex.Match(member.Title ?? string.Empty, @"(\d+)");
+            var m = Regex.Match(title ?? string.Empty, @"(\d+)");
             return m.Success && int.TryParse(m.Groups[1].Value, CultureInfo.InvariantCulture, out var n) ? n : null;
         }
 

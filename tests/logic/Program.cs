@@ -234,5 +234,36 @@ Check(leftAlone.Count == 1 && leftAlone[0].Contains("My Two Spy Daddies"), "and 
 var (nothingToDo, _, _) = CollectionBackup.Plan(planBackup, keys, new HashSet<string>(keys, StringComparer.Ordinal), dead);
 Check(nothingToDo.Count == 0, "a collection that already has everything restores nothing");
 
+
+Console.WriteLine("== favourites (same rules, per user) ==");
+var fav = new StarredList("kasia", "80a5ff19", snapshot, new List<StarredItem>
+{
+    new("Mated to My Alpha Enemy", "Series", 2026, null, "/mnt/Sandisk/jellyfin/series/Mated to My Alpha Enemy", "aaaa1111", false),
+    new("Season 1", "Season", null, "My Two Spy Daddies", "/mnt/Sandisk/jellyfin/series/My Two Spy Daddies/Season 01", "bbbb2222", false),
+    new("(missing item)", null, null, null, null, "cccc3333", true)
+});
+var favJson = FavoriteBackup.Json(fav);
+Check(favJson.Contains("\"user\": \"kasia\"") && favJson.Contains("\"favoriteCount\": 3"), "the backup is per user");
+Check(favJson.Contains("/mnt/Sandisk/jellyfin/series/Mated to My Alpha Enemy"), "it records the PATH (what survives a move)");
+Check(favJson.Contains("\"missing\": true"), "a detached star is flagged, not dropped");
+var favBack = FavoriteBackup.Parse(favJson);
+Check(favBack is not null && favBack.User == "kasia" && favBack.Items.Count == 3, "it round-trips through Parse");
+Check(favBack!.Items[2].Missing, "the detached flag survives the round trip");
+Check(FavoriteBackup.Markdown(fav).Contains("**(missing)**"), "markdown flags a detached star");
+Check(FavoriteBackup.IndexMarkdown(new[] { fav }, snapshot).Contains("| kasia | 3 | 1 | needs attention |"), "index counts stars and detached ones");
+Check(FavoriteBackup.KeyFor(fav.Items[1]) == CollectionBackup.NameKey("My Two Spy Daddies") + "|s1", "a season keys on its series plus number");
+Check(FavoriteBackup.KeyFor(fav.Items[0]) == CollectionBackup.NameKey("Mated to My Alpha Enemy"), "a series keys on its name");
+var favKeys = new HashSet<string>(StringComparer.Ordinal) { FavoriteBackup.KeyFor(fav.Items[0]), FavoriteBackup.KeyFor(fav.Items[1]) };
+var deadFav = new HashSet<string>(StringComparer.Ordinal) { fav.Items[0].Id!, fav.Items[1].Id! };
+var (reStar, favNotFound, favAlone) = FavoriteBackup.Plan(fav, favKeys, new HashSet<string>(StringComparer.Ordinal), deadFav);
+Check(reStar.Count == 2 && favNotFound.Count == 1, "stars whose id died are put back; a detached one is reported", string.Join(",", favNotFound));
+Check(favAlone.Count == 0, "nothing is left alone when every recorded id is dead");
+var (noReStar, _, onlyAlone) = FavoriteBackup.Plan(fav with { Items = new List<StarredItem> { fav.Items[0] } }, favKeys, new HashSet<string>(StringComparer.Ordinal), new HashSet<string>(StringComparer.Ordinal));
+Check(noReStar.Count == 0 && onlyAlone.Count == 1, "a star taken off on purpose is NOT put back");
+var (alreadyStarred, _, _) = FavoriteBackup.Plan(fav with { Items = new List<StarredItem> { fav.Items[0] } }, favKeys, favKeys, deadFav);
+Check(alreadyStarred.Count == 0, "a star the user still has is not touched");
+var (fl, fg) = FavoriteBackup.Diff(FavoriteBackup.Json(fav with { Items = new List<StarredItem> { fav.Items[0], fav.Items[1] } }), fav);
+Check(fl.Count == 0 && fg.Count == 1, "a detached star appearing counts as a change", string.Join(",", fg));
+
 Console.WriteLine(failures == 0 ? "\nALL PASS" : $"\n{failures} FAILURE(S)");
 return failures == 0 ? 0 : 1;
