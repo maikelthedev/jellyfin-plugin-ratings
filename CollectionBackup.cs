@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Globalization;
+using System.Text.RegularExpressions;
 using System.Linq;
 using System.Text;
 using System.Text.Json;
@@ -286,6 +287,202 @@ namespace Jellyfin.Plugin.Ratings
 
             return sb.ToString();
         }
+
+        /// <summary>
+        /// The comparison key for a title: what makes two spellings "the same show" when a restore
+        /// looks a member up by NAME rather than by path or id.
+        /// </summary>
+        /// <remarks>
+        /// Titles are matched by name because the path is exactly what changes when a title moves
+        /// between library roots, and the id is exactly what changes when Jellyfin re-imports it.
+        /// Normalising has to be generous: this library contains pairs that differ only in an
+        /// apostrophe or a typographic dash ("GOOD BOYS DON_T SLEEP WITH VAMPIRES" vs "Good Boys
+        /// Don't Sleep with Vampires", "Groom of the Beast‑King" with a non-breaking hyphen).
+        /// Diacritics and case fold away, punctuation separates, and everything else is dropped.
+        /// </remarks>
+        /// <param name="name">A title.</param>
+        /// <returns>The key: lowercase letters and digits only.</returns>
+        public static string NameKey(string? name)
+        {
+            if (string.IsNullOrWhiteSpace(name))
+            {
+                return string.Empty;
+            }
+
+            var decomposed = name!.Normalize(NormalizationForm.FormKD);
+            var sb = new StringBuilder(decomposed.Length);
+            foreach (var c in decomposed)
+            {
+                if (CharUnicodeInfo.GetUnicodeCategory(c) == UnicodeCategory.NonSpacingMark)
+                {
+                    continue;   // the accent of é, ä, ñ…
+                }
+
+                if (char.IsLetterOrDigit(c))
+                {
+                    sb.Append(char.ToLowerInvariant(c));
+                }
+            }
+
+            return sb.ToString();
+        }
+
+        /// <summary>
+        /// The key a restore uses for one member: the title for a series or a film, and the series
+        /// plus its season number for a season (whose own title is just "Season 1").
+        /// </summary>
+        /// <param name="member">The backed-up member.</param>
+        /// <returns>The key.</returns>
+        public static string MemberKey(CollectionMember member)
+        {
+            var season = SeasonNumberOf(member);
+            return season.HasValue && !string.IsNullOrWhiteSpace(member.Series)
+                ? NameKey(member.Series) + "|s" + season.Value.ToString(CultureInfo.InvariantCulture)
+                : NameKey(member.Title);
+        }
+
+        /// <summary>
+        /// The season number a member refers to, when it is a season: taken from its "Season N" title.
+        /// </summary>
+        /// <param name="member">The backed-up member.</param>
+        /// <returns>The number, or null.</returns>
+        public static int? SeasonNumberOf(CollectionMember member)
+        {
+            if (member.Missing || !string.Equals(member.Type, "Season", StringComparison.OrdinalIgnoreCase))
+            {
+                return null;
+            }
+
+            var m = Regex.Match(member.Title ?? string.Empty, @"(\d+)");
+            return m.Success && int.TryParse(m.Groups[1].Value, CultureInfo.InvariantCulture, out var n) ? n : null;
+        }
+
+        /// <summary>
+        /// Reads a backup file back into a snapshot.
+        /// </summary>
+        /// <param name="json">The file's text.</param>
+        /// <returns>The snapshot, or null when the file is not one of ours.</returns>
+        public static CollectionSnapshot? Parse(string? json)
+        {
+            if (string.IsNullOrWhiteSpace(json))
+            {
+                return null;
+            }
+
+            try
+            {
+                using var doc = JsonDocument.Parse(json!);
+                var root = doc.RootElement;
+                var name = root.TryGetProperty("collection", out var n) ? n.GetString() : null;
+                if (string.IsNullOrEmpty(name))
+                {
+                    return null;
+                }
+
+                var members = new List<CollectionMember>();
+                if (root.TryGetProperty("members", out var list) && list.ValueKind == JsonValueKind.Array)
+                {
+                    foreach (var m in list.EnumerateArray())
+                    {
+                        members.Add(new CollectionMember(
+                            Str(m, "title") ?? "(unnamed)",
+                            Str(m, "type"),
+                            m.TryGetProperty("year", out var y) && y.ValueKind == JsonValueKind.Number ? y.GetInt32() : null,
+                            Str(m, "series"),
+                            Str(m, "path"),
+                            Str(m, "id"),
+                            m.TryGetProperty("missing", out var mi) && mi.ValueKind == JsonValueKind.True));
+                    }
+                }
+
+                var when = Str(root, "backedUpUtc");
+                return new CollectionSnapshot(
+                    name!,
+                    Str(root, "id"),
+                    Str(root, "folder"),
+                    DateTime.TryParse(when, CultureInfo.InvariantCulture, DateTimeStyles.AdjustToUniversal | DateTimeStyles.AssumeUniversal, out var t) ? t : default,
+                    members);
+            }
+            catch (JsonException)
+            {
+                return null;
+            }
+        }
+
+        /// <summary>
+        /// Works out what a restore should do with one collection, without touching Jellyfin: the
+        /// members whose item can be found again and is missing from the collection, and the ones
+        /// that could not be found (which a person has to look at).
+        /// </summary>
+        /// <param name="backup">The backed-up collection.</param>
+        /// <param name="resolvableKeys">
+        /// Member keys (see <see cref="MemberKey"/>) that resolve to a live item - what the library
+        /// has today, by name.
+        /// </param>
+        /// <param name="presentKeys">Member keys already in the collection, so they are not re-added.</param>
+        /// <param name="deadIds">
+        /// The ids this backup recorded that no longer resolve to an item. This is what separates the
+        /// two reasons a member can be missing, and it is the whole point of the rule: an id that
+        /// still exists but is no longer in the collection was removed there by a PERSON, and putting
+        /// it back would fight them - while an id that is gone means the title was re-imported (moved,
+        /// renamed) and the collection lost it without anyone asking.
+        /// </param>
+        /// <returns>Members to add, titles that could not be resolved, and removals left alone.</returns>
+        public static (List<CollectionMember> ToAdd, List<string> Unresolved, List<string> LeftAlone) Plan(
+            CollectionSnapshot backup,
+            ISet<string> resolvableKeys,
+            ISet<string> presentKeys,
+            ISet<string> deadIds)
+        {
+            var toAdd = new List<CollectionMember>();
+            var unresolved = new List<string>();
+            var leftAlone = new List<string>();
+            var queued = new HashSet<string>(StringComparer.Ordinal);
+            foreach (var m in backup.Members)
+            {
+                if (m.Missing)
+                {
+                    // The backup only ever had an id for this one: there is no name to resolve by.
+                    unresolved.Add(m.Title + " (only an id was known)");
+                    continue;
+                }
+
+                var key = MemberKey(m);
+                if (string.IsNullOrEmpty(key))
+                {
+                    continue;
+                }
+
+                if (presentKeys.Contains(key))
+                {
+                    continue;
+                }
+
+                // An id that still resolves, for an item that is not in the collection, is a
+                // deliberate removal.
+                if (!string.IsNullOrEmpty(m.Id) && !deadIds.Contains(m.Id!))
+                {
+                    leftAlone.Add(m.Title);
+                    continue;
+                }
+
+                if (!resolvableKeys.Contains(key))
+                {
+                    unresolved.Add(m.Title);
+                    continue;
+                }
+
+                if (queued.Add(key))
+                {
+                    toAdd.Add(m);
+                }
+            }
+
+            return (toAdd, unresolved, leftAlone);
+        }
+
+        private static string? Str(JsonElement e, string name) =>
+            e.TryGetProperty(name, out var v) && v.ValueKind == JsonValueKind.String ? v.GetString() : null;
     }
 
     /// <summary>

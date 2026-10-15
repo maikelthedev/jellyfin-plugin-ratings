@@ -247,6 +247,15 @@ namespace Jellyfin.Plugin.Ratings.Configuration
         public string? BackupCollectionsTo { get; set; } = "/mnt/sata3/jellyfin/collections";
 
         /// <summary>
+        /// Gets or sets a value indicating whether the collection backup is also restored: members
+        /// the library still has (matched BY NAME) are added back to a collection that lost them.
+        /// Only ever adds, never removes. Off by default, because it cannot distinguish a member
+        /// lost to an id change from one you deliberately removed the day before - with this on, the
+        /// latter comes back.
+        /// </summary>
+        public bool RestoreCollections { get; set; }
+
+        /// <summary>
         /// Gets or sets the maximum rating value.
         /// </summary>
         public int MaxRating { get; set; }

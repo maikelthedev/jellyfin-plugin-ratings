@@ -194,5 +194,45 @@ Check(l2.Count == 0 && g2.Count == 0, "an unreadable previous backup does not br
 var line = CollectionBackup.ChangeLine(snap, new[] { "/mnt/x/My Two Spy Daddies" }, Array.Empty<string>());
 Check(line.Contains("Power Couples") && line.Contains("3 member(s)") && line.Contains("My Two Spy Daddies"), "CHANGES.md line names the collection, the count and the loss", line.Trim());
 
+
+Console.WriteLine("== the restore's name matching (name, never path or id) ==");
+Check(CollectionBackup.NameKey("GOOD BOYS DON_T SLEEP WITH VAMPIRES") == CollectionBackup.NameKey("Good Boys Don't Sleep with Vampires"), "apostrophes fold");
+Check(CollectionBackup.NameKey("Groom of the Beast\u2011King") == CollectionBackup.NameKey("Groom of the Beast-King"), "typographic dashes fold");
+Check(CollectionBackup.NameKey("Corazón Salvaje") == CollectionBackup.NameKey("Corazon Salvaje"), "diacritics fold");
+Check(CollectionBackup.NameKey("WTF\uff01I\u2018m Not Your Cinderella") == CollectionBackup.NameKey("WTF! I'm Not Your Cinderella"), "fullwidth punctuation folds");
+Check(CollectionBackup.NameKey("A Rhapsody for the Crown Prince") != CollectionBackup.NameKey("Bully at School"), "different titles stay different");
+Check(CollectionBackup.NameKey(null) == "" && CollectionBackup.NameKey("   ") == "", "an empty name has an empty key");
+
+var seasonMember = new CollectionMember("Season 1", "Season", null, "My Two Spy Daddies", "/x/My Two Spy Daddies/Season 01", "abc123", false);
+Check(CollectionBackup.MemberKey(seasonMember) == CollectionBackup.NameKey("My Two Spy Daddies") + "|s1",
+    "a season keys on its series plus its number, not on 'Season 1'", CollectionBackup.MemberKey(seasonMember));
+Check(CollectionBackup.SeasonNumberOf(seasonMember) == 1, "the season number comes from the title");
+Check(CollectionBackup.SeasonNumberOf(snap.Members[0]) == null, "a series is not a season");
+
+var back = CollectionBackup.Parse(CollectionBackup.Json(snap));
+Check(back is not null && back.Name == "Power Couples" && back.Members.Count == 3, "a backup round-trips through Parse");
+Check(back!.Members[2].Missing, "the missing flag survives the round trip");
+Check(back.Members[0].Path!.Contains("Mated to My Alpha Enemy"), "the path survives the round trip");
+Check(CollectionBackup.Parse("{") is null && CollectionBackup.Parse("") is null, "garbage does not parse as a collection");
+
+var keys = new HashSet<string>(StringComparer.Ordinal) { CollectionBackup.MemberKey(m1), CollectionBackup.MemberKey(seasonMember) };
+var already = new HashSet<string>(StringComparer.Ordinal) { CollectionBackup.MemberKey(m1) };
+// m1's recorded id is gone (moved/re-imported); seasonMember's is gone too; m2 is not in the library.
+var dead = new HashSet<string>(StringComparer.Ordinal) { m1.Id!, seasonMember.Id!, m2.Id! };
+var planBackup = snap with { Members = new List<CollectionMember> { m1, m2, seasonMember, snap.Members[2] } };
+var (toRestore, notFound, alone) = CollectionBackup.Plan(planBackup, keys, already, dead);
+Check(toRestore.Count == 1 && toRestore[0].Title == "Season 1", "a member whose id died is restored, by name", string.Join(",", toRestore.Select(m => m.Title)));
+Check(notFound.Any(u => u.Contains("My Two Spy Daddies")), "a member the library no longer has is reported, not skipped", string.Join(" | ", notFound));
+Check(notFound.Any(u => u.Contains("only an id was known")), "a dead link says why it cannot be restored", string.Join(" | ", notFound));
+Check(alone.Count == 0, "nothing is left alone when every missing member's id is dead");
+
+// The other half of the rule: an id that STILL resolves, for an item that is not in the
+// collection, was removed there by a person - restoring it would fight them.
+var (deliberate, _, leftAlone) = CollectionBackup.Plan(planBackup with { Members = new List<CollectionMember> { m2 } }, keys, new HashSet<string>(StringComparer.Ordinal), new HashSet<string>(StringComparer.Ordinal));
+Check(deliberate.Count == 0, "a deliberately removed member is NOT restored");
+Check(leftAlone.Count == 1 && leftAlone[0].Contains("My Two Spy Daddies"), "and it is reported as left alone", string.Join(",", leftAlone));
+var (nothingToDo, _, _) = CollectionBackup.Plan(planBackup, keys, new HashSet<string>(keys, StringComparer.Ordinal), dead);
+Check(nothingToDo.Count == 0, "a collection that already has everything restores nothing");
+
 Console.WriteLine(failures == 0 ? "\nALL PASS" : $"\n{failures} FAILURE(S)");
 return failures == 0 ? 0 : 1;

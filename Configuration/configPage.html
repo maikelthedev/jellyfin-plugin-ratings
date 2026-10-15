@@ -106,6 +106,18 @@
                                     <input id="txtCollectionsBackupPath" type="text" is="emby-input" label="Backup folder" />
                                     <div class="fieldDescription">Where the collection backup is written.</div>
                                 </div>
+                                <label class="emby-checkbox-label">
+                                    <input id="chkRestoreCollections" type="checkbox" is="emby-checkbox" />
+                                    <span>Also restore collections from the backup</span>
+                                </label>
+                                <div class="fieldDescription checkboxFieldDescription">
+                                    Adds back the members a collection has lost, matched <em>by name</em> — an id
+                                    changes when Jellyfin re-imports a title, and a path changes when it moves, so
+                                    the name is the only key that survives both. It only ever adds, never removes.
+                                    ⚠️ Because of that it cannot tell a member lost to a move from one you removed
+                                    on purpose: with this on, the latter comes back on the next run. Runs daily at
+                                    04:00, an hour before the backup.
+                                </div>
                             </div>
 
                             <div class="checkboxContainer checkboxContainer-withDescription">
@@ -2849,6 +2861,7 @@
                     document.querySelector('#chkMirrorRatingsToNfo').checked = config.MirrorRatingsToNfo !== false;
                     document.querySelector('#chkImportRatingsFromNfo').checked = config.ImportRatingsFromNfo === true;
                     document.querySelector('#chkBackupCollections').checked = config.BackupCollections !== false;
+                    document.querySelector('#chkRestoreCollections').checked = config.RestoreCollections === true;
                     document.querySelector('#txtCollectionsBackupPath').value = config.BackupCollectionsTo || '/mnt/sata3/jellyfin/collections';
 
                     // One-time "sync existing ratings to Jellyfin" backfill button.
@@ -3237,6 +3250,7 @@
                     config.MirrorRatingsToNfo = document.querySelector('#chkMirrorRatingsToNfo').checked;
                     config.ImportRatingsFromNfo = document.querySelector('#chkImportRatingsFromNfo').checked;
                     config.BackupCollections = document.querySelector('#chkBackupCollections').checked;
+                    config.RestoreCollections = document.querySelector('#chkRestoreCollections').checked;
                     config.BackupCollectionsTo = document.querySelector('#txtCollectionsBackupPath').value || '/mnt/sata3/jellyfin/collections';
                     config.MinRating = parseInt(document.querySelector('#txtMinRating').value);
                     config.MaxRating = parseInt(document.querySelector('#txtMaxRating').value);
