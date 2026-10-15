@@ -5,7 +5,6 @@ using System.Linq;
 using System.Security;
 using System.Text;
 using System.Text.RegularExpressions;
-using Jellyfin.Plugin.Ratings.Models;
 
 namespace Jellyfin.Plugin.Ratings
 {
@@ -21,11 +20,24 @@ namespace Jellyfin.Plugin.Ratings
     /// writes. The plugin store stays authoritative; this is a backup that can be restored from.
     /// </para>
     /// <para>
+    /// The block is written to be READ BY A PERSON: the reviewer appears by name, and there are no
+    /// ids, because the show's identity is implied by the file the block lives in. The one case
+    /// where that is not enough is a rating on a season - a season has no NFO of its own, so its
+    /// rating sits in the series' file and says <c>season="1"</c> to distinguish itself:
+    /// </para>
+    /// <code>
+    /// &lt;pluginratings source="k3ntas" exported="2026-10-13T18:40:54Z"&gt;
+    ///   &lt;rating user="maikel" value="8.0" updatedAt="2026-10-13T18:40:54Z"&gt;
+    ///     &lt;review&gt;Ooookay, what do we have here?&lt;/review&gt;
+    ///   &lt;/rating&gt;
+    ///   &lt;rating user="Kasia" value="7.0" season="1"/&gt;
+    /// &lt;/pluginratings&gt;
+    /// </code>
+    /// <para>
     /// The merge is byte-surgical and never reserialises the document: only the plugin's own block
     /// is replaced. Everything else in the file is copied verbatim - Jellyfin's own elements,
     /// <c>&lt;spoiler&gt;</c> (the series digest the per-episode descriptions are generated from),
-    /// hand-added fields, indentation, the XML declaration. Jellyfin's layout writer does the same
-    /// thing from its side (see episodic_layout.merge_foreign).
+    /// hand-added fields, indentation, the XML declaration.
     /// </para>
     /// </remarks>
     public static class NfoMirror
@@ -78,18 +90,18 @@ namespace Jellyfin.Plugin.Ratings
         }
 
         /// <summary>
-        /// Builds the plugin's block: one entry per (user, item) rating, review included.
+        /// Builds the plugin's block: one entry per reviewer, reviews included.
         /// </summary>
         /// <param name="source">Value for the block's <c>source</c> attribute.</param>
         /// <param name="exportedUtc">
-        /// The newest <c>UpdatedAt</c> among <paramref name="ratings"/>, i.e. how current the backup
-        /// is. Deliberately NOT the current time: the block has to be a pure function of the data,
-        /// or every run rewrites every file and the task becomes a source of churn (mtime changes
-        /// are what nudges Jellyfin into a refresh). Pass <see cref="DateTime.MinValue"/> to omit it.
+        /// The newest change among <paramref name="entries"/>, i.e. how current the backup is.
+        /// Deliberately NOT the current time: the block has to be a pure function of the data, or
+        /// every run rewrites every file and the task becomes a source of churn (mtime changes are
+        /// what nudges Jellyfin into a refresh). Pass <see cref="DateTime.MinValue"/> to omit it.
         /// </param>
-        /// <param name="ratings">The ratings to write.</param>
+        /// <param name="entries">What to write.</param>
         /// <returns>The block's XML text.</returns>
-        public static string BuildBlock(string source, DateTime exportedUtc, IEnumerable<UserRating> ratings)
+        public static string BuildBlock(string source, DateTime exportedUtc, IEnumerable<MirroredEntry> entries)
         {
             var sb = new StringBuilder();
             sb.Append("  <").Append(ElementName)
@@ -102,18 +114,24 @@ namespace Jellyfin.Plugin.Ratings
             }
 
             sb.Append(">\n");
-            foreach (var r in ratings.OrderBy(r => r.UserId).ThenBy(r => r.Id))
+            foreach (var e in entries.OrderBy(e => e.SeasonNumber ?? 0).ThenBy(e => e.User, StringComparer.OrdinalIgnoreCase))
             {
                 sb.Append("    <rating")
-                  .Append(" userId=\"").Append(r.UserId.ToString("D", CultureInfo.InvariantCulture)).Append('"')
-                  .Append(" itemId=\"").Append(r.ItemId.ToString("D", CultureInfo.InvariantCulture)).Append('"')
-                  .Append(" value=\"").Append(r.Rating.ToString("0.0##", CultureInfo.InvariantCulture)).Append('"');
-                if (r.UpdatedAt != default)
+                  .Append(" user=\"").Append(Escape(e.User)).Append('"')
+                  .Append(" value=\"").Append(e.Rating.ToString("0.0##", CultureInfo.InvariantCulture)).Append('"');
+                if (e.SeasonNumber.HasValue)
                 {
-                    sb.Append(" updatedAt=\"").Append(r.UpdatedAt.ToUniversalTime().ToString("yyyy-MM-dd'T'HH:mm:ss'Z'", CultureInfo.InvariantCulture)).Append('"');
+                    sb.Append(" season=\"").Append(e.SeasonNumber.Value.ToString(CultureInfo.InvariantCulture)).Append('"');
                 }
 
-                var review = Clean(r.ReviewText);
+                if (e.UpdatedAt.HasValue && e.UpdatedAt.Value != default)
+                {
+                    sb.Append(" updatedAt=\"")
+                      .Append(e.UpdatedAt.Value.ToUniversalTime().ToString("yyyy-MM-dd'T'HH:mm:ss'Z'", CultureInfo.InvariantCulture))
+                      .Append('"');
+                }
+
+                var review = Clean(e.ReviewText);
                 if (string.IsNullOrEmpty(review))
                 {
                     sb.Append("/>\n");
@@ -171,10 +189,10 @@ namespace Jellyfin.Plugin.Ratings
         /// Reads the ratings back out of a mirrored NFO (the restore path).
         /// </summary>
         /// <param name="nfo">The NFO's text, or the block on its own.</param>
-        /// <returns>One entry per rating found; empty when the file has no block.</returns>
-        public static List<MirroredRating> Parse(string? nfo)
+        /// <returns>One entry per review found; empty when the file has no block.</returns>
+        public static List<MirroredEntry> Parse(string? nfo)
         {
-            var found = new List<MirroredRating>();
+            var found = new List<MirroredEntry>();
             var block = Extract(nfo);
             if (block is null)
             {
@@ -184,24 +202,25 @@ namespace Jellyfin.Plugin.Ratings
             foreach (Match m in RatingRegex.Matches(block))
             {
                 var attrs = m.Groups["attrs"].Value;
-                var user = Attr(attrs, "userId");
-                var item = Attr(attrs, "itemId");
+                var user = Unescape(Attr(attrs, "user") ?? string.Empty);
                 var value = Attr(attrs, "value");
-                if (user is null || item is null || value is null
-                    || !Guid.TryParse(user, out var userId) || !Guid.TryParse(item, out var itemId)
+                if (string.IsNullOrEmpty(user) || value is null
                     || !double.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out var rating))
                 {
                     continue;
                 }
 
+                int? season = int.TryParse(Attr(attrs, "season"), NumberStyles.Integer, CultureInfo.InvariantCulture, out var s)
+                    ? s
+                    : null;
                 var updated = Attr(attrs, "updatedAt");
                 DateTime? when = DateTime.TryParse(updated, CultureInfo.InvariantCulture,
                     DateTimeStyles.AdjustToUniversal | DateTimeStyles.AssumeUniversal, out var parsed) ? parsed : null;
                 var reviewMatch = ReviewRegex.Match(m.Groups["body"].Value);
-                found.Add(new MirroredRating(
-                    userId, itemId, rating,
+                found.Add(new MirroredEntry(
+                    user, rating,
                     reviewMatch.Success ? Unescape(reviewMatch.Groups["text"].Value) : null,
-                    when));
+                    season, when));
             }
 
             return found;
@@ -249,12 +268,16 @@ namespace Jellyfin.Plugin.Ratings
     }
 
     /// <summary>
-    /// One rating read back out of a mirrored NFO.
+    /// One review as it is written into (and read back from) a mirrored NFO.
     /// </summary>
-    /// <param name="UserId">The rating's user.</param>
-    /// <param name="ItemId">The rated item.</param>
+    /// <param name="User">The reviewer's name. A person reading the NFO should see a name.</param>
     /// <param name="Rating">The rating value.</param>
     /// <param name="ReviewText">The review, if one was written.</param>
-    /// <param name="UpdatedAt">When the record was last changed.</param>
-    public record MirroredRating(Guid UserId, Guid ItemId, double Rating, string? ReviewText, DateTime? UpdatedAt);
+    /// <param name="SeasonNumber">
+    /// Set only when the rating is not on the item that owns the file: a season has no NFO of its
+    /// own, so its rating lives in the series' file and is labelled with the season number. No item
+    /// ids are stored anywhere - the file says which show it is.
+    /// </param>
+    /// <param name="UpdatedAt">When the rating was last changed.</param>
+    public record MirroredEntry(string User, double Rating, string? ReviewText, int? SeasonNumber, DateTime? UpdatedAt);
 }

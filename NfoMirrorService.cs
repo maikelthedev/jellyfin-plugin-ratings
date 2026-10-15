@@ -5,12 +5,13 @@ using System.IO;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using Jellyfin.Data.Enums;
 using Jellyfin.Plugin.Ratings.Data;
 using MediaBrowser.Common.Configuration;
 using MediaBrowser.Controller.Entities;
-using MediaBrowser.Controller.Entities.Movies;
 using MediaBrowser.Controller.Entities.TV;
 using MediaBrowser.Controller.Library;
+using MediaBrowser.Model.Querying;
 using MediaBrowser.Model.Tasks;
 using Microsoft.Extensions.Logging;
 
@@ -28,6 +29,12 @@ namespace Jellyfin.Plugin.Ratings
     /// libraries), so nothing else can clobber it.
     /// </para>
     /// <para>
+    /// The block is written to be read by a person: reviewers appear by name, and no item ids are
+    /// stored because the file the block lives in already says which show it is. A season is the
+    /// one case that needs a label, since a season has no NFO of its own and its rating sits in the
+    /// series' file - that entry carries <c>season="1"</c>.
+    /// </para>
+    /// <para>
     /// Writes are skipped when the payload has not changed, so a normal run touches no files and
     /// no mtimes: that matters because a changed NFO is what nudges Jellyfin into a refresh.
     /// </para>
@@ -43,6 +50,7 @@ namespace Jellyfin.Plugin.Ratings
         private readonly ILogger<NfoMirrorService> _logger;
         private readonly IApplicationPaths _appPaths;
         private readonly ILibraryManager _libraryManager;
+        private readonly IUserManager _userManager;
         private readonly RatingsRepository _repository;
 
         /// <summary>
@@ -51,16 +59,19 @@ namespace Jellyfin.Plugin.Ratings
         /// <param name="logger">Logger instance.</param>
         /// <param name="appPaths">Application paths (for the backup directory).</param>
         /// <param name="libraryManager">Library manager, used to resolve a rating's item and path.</param>
+        /// <param name="userManager">User manager, used to write the reviewer's name into the NFO.</param>
         /// <param name="repository">The plugin's ratings store.</param>
         public NfoMirrorService(
             ILogger<NfoMirrorService> logger,
             IApplicationPaths appPaths,
             ILibraryManager libraryManager,
+            IUserManager userManager,
             RatingsRepository repository)
         {
             _logger = logger;
             _appPaths = appPaths;
             _libraryManager = libraryManager;
+            _userManager = userManager;
             _repository = repository;
         }
 
@@ -122,9 +133,11 @@ namespace Jellyfin.Plugin.Ratings
             // Group by the NFO the ratings belong to, NOT by item: a series' tvshow.nfo carries the
             // series' own ratings AND its seasons' (a season has no NFO of its own, so both map to the
             // series file), and the block is a single element per file.
-            var byNfo = new Dictionary<string, List<Models.UserRating>>(StringComparer.Ordinal);
+            var byNfo = new Dictionary<string, List<MirroredEntry>>(StringComparer.Ordinal);
+            var ownerOf = new Dictionary<string, BaseItem>(StringComparer.Ordinal);
             var noItem = 0;
             var noNfo = 0;
+            var noUser = 0;
             foreach (var group in groups)
             {
                 var item = _libraryManager.GetItemById(group.Key);
@@ -145,10 +158,24 @@ namespace Jellyfin.Plugin.Ratings
 
                 if (!byNfo.TryGetValue(nfoPath, out var list))
                 {
-                    byNfo[nfoPath] = list = new List<Models.UserRating>();
+                    byNfo[nfoPath] = list = new List<MirroredEntry>();
+                    ownerOf[nfoPath] = item;
                 }
 
-                list.AddRange(group);
+                var season = item is Season ? item.IndexNumber : null;
+                foreach (var r in group)
+                {
+                    var name = _userManager.GetUserById(r.UserId)?.Username;
+                    if (string.IsNullOrEmpty(name))
+                    {
+                        // The account is gone: keep the record, but there is no name to show. The id is
+                        // still better than dropping a review from the backup.
+                        name = r.UserId.ToString("D", CultureInfo.InvariantCulture);
+                        noUser++;
+                    }
+
+                    list.Add(new MirroredEntry(name!, r.Rating, r.ReviewText, season, r.UpdatedAt));
+                }
             }
 
             var backups = Path.Combine(_appPaths.DataPath, "ratings", "nfo-backups",
@@ -159,7 +186,7 @@ namespace Jellyfin.Plugin.Ratings
             var restored = 0;
             var done = 0;
 
-            foreach (var (nfoPath, ratings) in byNfo)
+            foreach (var (nfoPath, entries) in byNfo)
             {
                 cancellationToken.ThrowIfCancellationRequested();
                 done++;
@@ -170,11 +197,11 @@ namespace Jellyfin.Plugin.Ratings
                     var existing = File.ReadAllText(nfoPath);
                     // "exported" = the newest change among these ratings, never "now": a block that
                     // changes on every run would rewrite every file on every run.
-                    var newest = ratings.Where(r => r.UpdatedAt != default)
-                                        .Select(r => r.UpdatedAt)
+                    var newest = entries.Where(e => e.UpdatedAt.HasValue && e.UpdatedAt.Value != default)
+                                        .Select(e => e.UpdatedAt!.Value)
                                         .DefaultIfEmpty()
                                         .Max();
-                    var block = NfoMirror.BuildBlock("k3ntas", newest, ratings);
+                    var block = NfoMirror.BuildBlock("k3ntas", newest, entries);
                     var merged = NfoMirror.Merge(existing, block);
                     if (string.Equals(merged, existing, StringComparison.Ordinal))
                     {
@@ -191,7 +218,7 @@ namespace Jellyfin.Plugin.Ratings
 
                     if (config.ImportRatingsFromNfo)
                     {
-                        restored += RestoreMissing(NfoMirror.Parse(existing));
+                        restored += RestoreMissing(NfoMirror.Parse(existing), ownerOf[nfoPath]);
                     }
                 }
                 catch (Exception ex)
@@ -204,8 +231,8 @@ namespace Jellyfin.Plugin.Ratings
             _logger.LogInformation(
                 "NFO mirror: {Ratings} ratings on {Groups} items -> {Files} NFOs — {Written} written, "
                 + "{Unchanged} unchanged, {NoNfo} without an NFO, {NoItem} not in the library, "
-                + "{Failed} failed, {Restored} restored",
-                all.Count, groups.Count, byNfo.Count, written, unchanged, noNfo, noItem, failed, restored);
+                + "{NoUser} without a user name, {Failed} failed, {Restored} restored",
+                all.Count, groups.Count, byNfo.Count, written, unchanged, noNfo, noItem, noUser, failed, restored);
             progress?.Report(100);
         }
 
@@ -213,31 +240,90 @@ namespace Jellyfin.Plugin.Ratings
         /// Imports ratings that only exist in an NFO. Never overwrites what the store already has,
         /// so a deleted rating cannot come back.
         /// </summary>
-        /// <param name="mirrored">Records read out of the NFO's block.</param>
+        /// <param name="mirrored">Entries read out of the NFO's block.</param>
+        /// <param name="owning">The item whose NFO this is (what an entry without a season refers to).</param>
         /// <returns>How many were restored.</returns>
-        private int RestoreMissing(IReadOnlyCollection<MirroredRating> mirrored)
+        private int RestoreMissing(IReadOnlyCollection<MirroredEntry> mirrored, BaseItem owning)
         {
             var restored = 0;
-            foreach (var r in mirrored)
+            foreach (var e in mirrored)
             {
-                if (_repository.GetUserRating(r.UserId, r.ItemId) != null)
+                var userId = ResolveUserId(e.User);
+                var item = ResolveItem(e.SeasonNumber, owning);
+                if (userId is null || item is null)
+                {
+                    continue;
+                }
+
+                if (_repository.GetUserRating(userId.Value, item.Id) != null)
                 {
                     continue;
                 }
 
                 try
                 {
-                    _repository.SetRatingAsync(r.UserId, r.ItemId, r.Rating, reviewText: r.ReviewText)
+                    _repository.SetRatingAsync(userId.Value, item.Id, e.Rating, reviewText: e.ReviewText)
                         .GetAwaiter().GetResult();
                     restored++;
                 }
                 catch (Exception ex)
                 {
-                    _logger.LogWarning(ex, "NFO mirror: could not restore a rating for {ItemId}", r.ItemId);
+                    _logger.LogWarning(ex, "NFO mirror: could not restore {User}'s rating of {Item}", e.User, item.Name);
                 }
             }
 
             return restored;
+        }
+
+        /// <summary>
+        /// Resolves a reviewer from the block: by name, or by id when the entry is an id (which is
+        /// what a rating whose account was deleted, or renamed, looks like). Returns the id rather
+        /// than the user object, so no version-specific user type has to be named here (the User
+        /// entity has moved namespaces between Jellyfin releases).
+        /// </summary>
+        /// <param name="user">The name, or a GUID.</param>
+        /// <returns>The user's id, or null when nothing matches.</returns>
+        private Guid? ResolveUserId(string user)
+        {
+            var byName = _userManager.GetUserByName(user);
+            if (byName is not null)
+            {
+                return byName.Id;
+            }
+
+            if (!Guid.TryParse(user, out var id))
+            {
+                return null;
+            }
+
+            return _userManager.GetUserById(id) is null ? null : id;
+        }
+
+        /// <summary>
+        /// Resolves what an entry refers to: the file's own item, or one of its seasons.
+        /// </summary>
+        /// <param name="seasonNumber">The entry's season label, if it has one.</param>
+        /// <param name="owning">The item whose NFO this is.</param>
+        /// <returns>The item, or null.</returns>
+        private BaseItem? ResolveItem(int? seasonNumber, BaseItem owning)
+        {
+            if (!seasonNumber.HasValue)
+            {
+                return owning;
+            }
+
+            if (owning is not Series)
+            {
+                return null;
+            }
+
+            var seasons = _libraryManager.GetItemList(new InternalItemsQuery
+            {
+                ParentId = owning.Id,
+                Recursive = false,
+                IncludeItemTypes = new[] { BaseItemKind.Season }
+            });
+            return seasons.FirstOrDefault(s => s.IndexNumber == seasonNumber.Value);
         }
 
         /// <summary>
