@@ -73,6 +73,11 @@ jobs:
           node --check Web/ratings.js
           for f in Web/i18n/*.js; do node --check "$f"; done
 
+      # The pure-logic tests (block building/merging/parsing, collection rendering/diffing).
+      # They need no Jellyfin: the bugs they cover were all silent in a browser.
+      - name: Run logic tests
+        run: dotnet run --project tests/logic -c Release
+
       - name: Validate manifest.json
         run: |
           node -e "

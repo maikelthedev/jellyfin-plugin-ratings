@@ -231,6 +231,22 @@ namespace Jellyfin.Plugin.Ratings.Configuration
         public bool ImportRatingsFromNfo { get; set; }
 
         /// <summary>
+        /// Gets or sets a value indicating whether every collection (BoxSet) is backed up to
+        /// BackupCollectionsTo on a schedule. A collection is a list of item ids, so moving or
+        /// renaming a title prunes its membership with nothing left to restore from; the backup
+        /// records each member's name, type, year, series and path, which is what a rebuild needs.
+        /// Default true.
+        /// </summary>
+        public bool BackupCollections { get; set; } = true;
+
+        /// <summary>
+        /// Gets or sets where the collection backup is written: one .json (diffable) and one .md
+        /// (readable) per collection, an index, a CHANGES.md log and a history/ folder holding the
+        /// previous version of anything that changed.
+        /// </summary>
+        public string? BackupCollectionsTo { get; set; } = "/mnt/sata3/jellyfin/collections";
+
+        /// <summary>
         /// Gets or sets the maximum rating value.
         /// </summary>
         public int MaxRating { get; set; }

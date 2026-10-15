@@ -1,0 +1,25 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!--
+    The plugin's logic tests. These cover the PURE parts - NfoMirror's block building/merging/parsing
+    and CollectionBackup's rendering and diffing - which is where the bugs have actually been:
+    anchoring the block on "the last line ending in </x>" (put it mid-file), a block carrying
+    exported="<now>" (rewrote every file every run), and an element that lost its "<". None of those
+    are visible to the JS suite, and none need a running Jellyfin.
+
+    dotnet run -c Release
+  -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <AssemblyName>RatingsLogicTests</AssemblyName>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="../../NfoMirror.cs" />
+    <Compile Include="../../CollectionBackup.cs" />
+    <Compile Include="../../Models/UserRating.cs" />
+    <Compile Include="Program.cs" />
+  </ItemGroup>
+</Project>

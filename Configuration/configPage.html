@@ -93,6 +93,23 @@
 
                             <div class="checkboxContainer checkboxContainer-withDescription">
                                 <label class="emby-checkbox-label">
+                                    <input id="chkBackupCollections" type="checkbox" is="emby-checkbox" />
+                                    <span>Back up collections to disk (readable .json + .md)</span>
+                                </label>
+                                <div class="fieldDescription checkboxFieldDescription">
+                                    Writes every collection's members — names, types, years and <em>paths</em> — to
+                                    the folder below. A collection is a list of item ids, so moving or renaming a
+                                    title silently drops it from the collection; these files are the record to
+                                    rebuild from. Runs daily (Scheduled Tasks → “Back up collections”).
+                                </div>
+                                <div class="inputContainer">
+                                    <input id="txtCollectionsBackupPath" type="text" is="emby-input" label="Backup folder" />
+                                    <div class="fieldDescription">Where the collection backup is written.</div>
+                                </div>
+                            </div>
+
+                            <div class="checkboxContainer checkboxContainer-withDescription">
+                                <label class="emby-checkbox-label">
                                     <input id="chkImportRatingsFromNfo" type="checkbox" is="emby-checkbox" />
                                     <span>Restore ratings that only exist in an .nfo</span>
                                 </label>
@@ -2831,6 +2848,8 @@
                     document.querySelector('#chkWriteAverageToCommunityRating').checked = config.WriteAverageToCommunityRating === true;
                     document.querySelector('#chkMirrorRatingsToNfo').checked = config.MirrorRatingsToNfo !== false;
                     document.querySelector('#chkImportRatingsFromNfo').checked = config.ImportRatingsFromNfo === true;
+                    document.querySelector('#chkBackupCollections').checked = config.BackupCollections !== false;
+                    document.querySelector('#txtCollectionsBackupPath').value = config.BackupCollectionsTo || '/mnt/sata3/jellyfin/collections';
 
                     // One-time "sync existing ratings to Jellyfin" backfill button.
                     var backfillBtn = document.getElementById('btnBackfillNativeRatings');
@@ -3217,6 +3236,8 @@
                     config.WriteAverageToCommunityRating = document.querySelector('#chkWriteAverageToCommunityRating').checked;
                     config.MirrorRatingsToNfo = document.querySelector('#chkMirrorRatingsToNfo').checked;
                     config.ImportRatingsFromNfo = document.querySelector('#chkImportRatingsFromNfo').checked;
+                    config.BackupCollections = document.querySelector('#chkBackupCollections').checked;
+                    config.BackupCollectionsTo = document.querySelector('#txtCollectionsBackupPath').value || '/mnt/sata3/jellyfin/collections';
                     config.MinRating = parseInt(document.querySelector('#txtMinRating').value);
                     config.MaxRating = parseInt(document.querySelector('#txtMaxRating').value);
                     config.EnableNetflixView = document.querySelector('#chkEnableNetflixView').checked;
