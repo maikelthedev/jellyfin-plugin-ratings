@@ -383,6 +383,32 @@ namespace Jellyfin.Plugin.Ratings.Api
         /// </summary>
         /// <param name="itemId">Item ID.</param>
         /// <returns>Rating statistics.</returns>
+        /// <summary>
+        /// The id a link to this item should open. For a vertical drama that is the show's season,
+        /// because the rating (and so the review) is filed there rather than on the series or the
+        /// episode; for everything else it is the item itself.
+        /// </summary>
+        /// <param name="itemId">The item a card, review or notification points at.</param>
+        /// <returns>The id to open, and the type it turned out to be.</returns>
+        [HttpGet("Items/{itemId}/Link")]
+        [Authorize]
+        public ActionResult<object> GetItemLink([FromRoute] [Required] Guid itemId)
+        {
+            var item = _libraryManager.GetItemById(itemId);
+            if (item == null)
+            {
+                // A stale id must still navigate somewhere rather than dead-ending the click.
+                return Ok(new { ItemId = itemId.ToString("N", System.Globalization.CultureInfo.InvariantCulture), Type = (string?)null });
+            }
+
+            var (target, _, _) = RatingTargets.Resolve(_libraryManager, item);
+            return Ok(new
+            {
+                ItemId = target.Id.ToString("N", System.Globalization.CultureInfo.InvariantCulture),
+                Type = target.GetClientTypeName()
+            });
+        }
+
         [HttpGet("Items/{itemId}/Stats")]
         [Authorize]
         public async Task<ActionResult<RatingStats>> GetRatingStats([FromRoute] [Required] Guid itemId)

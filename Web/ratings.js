@@ -2818,15 +2818,18 @@
             var panel = document.getElementById('social-friends-panel');
             if (panel) panel.classList.remove('open');
 
-            // Navigate to the media item using Jellyfin's router
-            if (window.Emby && Emby.Page) {
-                Emby.Page.showItem(itemId);
-            } else if (window.Dashboard) {
-                Dashboard.navigate('details?id=' + itemId);
-            } else {
-                // Fallback: direct URL navigation
-                window.location.hash = '#!/details?id=' + itemId;
-            }
+            // Same rule as openMedia - see resolveLinkId.
+            RatingsPlugin.resolveLinkId(itemId, function (linkId) {
+                // Navigate to the media item using Jellyfin's router
+                if (window.Emby && Emby.Page) {
+                    Emby.Page.showItem(linkId);
+                } else if (window.Dashboard) {
+                    Dashboard.navigate('details?id=' + linkId);
+                } else {
+                    // Fallback: direct URL navigation
+                    window.location.hash = '#!/details?id=' + linkId;
+                }
+            });
         },
 
         /**
@@ -7280,7 +7283,42 @@
             if (!itemId) return;
             var modal = document.querySelector('.social-profile-page');
             if (modal) modal.remove();
-            window.location.hash = '#!/details?id=' + itemId;
+
+            // Every link the plugin hands out goes through resolveLinkId: for a vertical drama the
+            // rating is filed on the show's SEASON, so the season page is where the review is shown
+            // and the only page worth opening. A landscape show or a film resolves to itself.
+            RatingsPlugin.resolveLinkId(itemId, function (linkId) {
+                window.location.hash = '#!/details?id=' + linkId;
+            });
+        },
+
+        /**
+         * The id to open for an item: its season for a vertical drama, itself otherwise. Asked once
+         * per id and cached. It always calls back - a resolver that is unreachable must not stop a
+         * link from working, it just opens what the link already carried.
+         *
+         * @param {string} itemId The item a card, review or notification points at.
+         * @param {function(string)} done Called with the id to open.
+         */
+        resolveLinkId: function (itemId, done) {
+            var self = this;
+            if (!itemId) { done(itemId); return; }
+
+            self._linkIdCache = self._linkIdCache || {};
+            if (self._linkIdCache[itemId]) { done(self._linkIdCache[itemId]); return; }
+
+            var baseUrl = ApiClient.serverAddress();
+            fetch(baseUrl + '/Ratings/Items/' + encodeURIComponent(itemId) + '/Link', {
+                credentials: 'include',
+                headers: RatingsPlugin.authHeaders()
+            })
+                .then(function (r) { return r.ok ? r.json() : null; })
+                .then(function (d) {
+                    var linkId = (d && (d.ItemId || d.itemId)) || itemId;
+                    self._linkIdCache[itemId] = linkId;
+                    done(linkId);
+                })
+                .catch(function () { done(itemId); });
         },
 
         /**
@@ -21820,7 +21858,8 @@
                 notifEl.style.cursor = 'pointer';
                 notifEl.addEventListener('click', (e) => {
                     if (e.target !== closeBtn && !closeBtn.contains(e.target)) {
-                        window.location.hash = `#/details?id=${(notification.itemId ?? notification.ItemId)}`;
+                        // A notification about an episode opens the season that holds it.
+                        RatingsPlugin.openMedia(notification.itemId ?? notification.ItemId);
                         this.hideNotification(notifEl);
                     }
                 });
