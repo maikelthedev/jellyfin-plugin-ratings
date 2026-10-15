@@ -81,15 +81,27 @@ namespace Jellyfin.Plugin.Ratings
         /// Builds the plugin's block: one entry per (user, item) rating, review included.
         /// </summary>
         /// <param name="source">Value for the block's <c>source</c> attribute.</param>
-        /// <param name="exportedUtc">When the block was produced.</param>
+        /// <param name="exportedUtc">
+        /// The newest <c>UpdatedAt</c> among <paramref name="ratings"/>, i.e. how current the backup
+        /// is. Deliberately NOT the current time: the block has to be a pure function of the data,
+        /// or every run rewrites every file and the task becomes a source of churn (mtime changes
+        /// are what nudges Jellyfin into a refresh). Pass <see cref="DateTime.MinValue"/> to omit it.
+        /// </param>
         /// <param name="ratings">The ratings to write.</param>
         /// <returns>The block's XML text.</returns>
         public static string BuildBlock(string source, DateTime exportedUtc, IEnumerable<UserRating> ratings)
         {
             var sb = new StringBuilder();
             sb.Append("  <").Append(ElementName)
-              .Append(" source=\"").Append(Escape(source)).Append('"')
-              .Append(" exported=\"").Append(exportedUtc.ToUniversalTime().ToString("yyyy-MM-dd'T'HH:mm:ss'Z'", CultureInfo.InvariantCulture)).Append("\">\n");
+              .Append(" source=\"").Append(Escape(source)).Append('"');
+            if (exportedUtc != default)
+            {
+                sb.Append(" exported=\"")
+                  .Append(exportedUtc.ToUniversalTime().ToString("yyyy-MM-dd'T'HH:mm:ss'Z'", CultureInfo.InvariantCulture))
+                  .Append('"');
+            }
+
+            sb.Append(">\n");
             foreach (var r in ratings.OrderBy(r => r.UserId).ThenBy(r => r.Id))
             {
                 sb.Append("    <rating")

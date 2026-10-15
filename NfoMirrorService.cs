@@ -168,7 +168,13 @@ namespace Jellyfin.Plugin.Ratings
                 try
                 {
                     var existing = File.ReadAllText(nfoPath);
-                    var block = NfoMirror.BuildBlock("k3ntas", DateTime.UtcNow, ratings);
+                    // "exported" = the newest change among these ratings, never "now": a block that
+                    // changes on every run would rewrite every file on every run.
+                    var newest = ratings.Where(r => r.UpdatedAt != default)
+                                        .Select(r => r.UpdatedAt)
+                                        .DefaultIfEmpty()
+                                        .Max();
+                    var block = NfoMirror.BuildBlock("k3ntas", newest, ratings);
                     var merged = NfoMirror.Merge(existing, block);
                     if (string.Equals(merged, existing, StringComparison.Ordinal))
                     {
