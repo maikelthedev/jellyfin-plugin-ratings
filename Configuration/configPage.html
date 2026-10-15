@@ -78,6 +78,31 @@
                                 </div>
                             </div>
 
+                            <div class="checkboxContainer checkboxContainer-withDescription">
+                                <label class="emby-checkbox-label">
+                                    <input id="chkMirrorRatingsToNfo" type="checkbox" is="emby-checkbox" />
+                                    <span>Back up ratings and reviews into the media's .nfo</span>
+                                </label>
+                                <div class="fieldDescription checkboxFieldDescription">
+                                    Writes every rating and review into the rated item's .nfo as an inert
+                                    &lt;pluginratings&gt; element, so the data travels with the media and survives losing
+                                    ratings.json. Jellyfin ignores the element and never rewrites the file. Runs daily
+                                    (Scheduled Tasks → “Mirror ratings and reviews into NFOs”). Recommended on.
+                                </div>
+                            </div>
+
+                            <div class="checkboxContainer checkboxContainer-withDescription">
+                                <label class="emby-checkbox-label">
+                                    <input id="chkImportRatingsFromNfo" type="checkbox" is="emby-checkbox" />
+                                    <span>Restore ratings that only exist in an .nfo</span>
+                                </label>
+                                <div class="fieldDescription checkboxFieldDescription">
+                                    Also read the mirrored element back: ratings and reviews the plugin no longer has are
+                                    restored from the .nfo. It only ever adds, so a rating you deleted in the UI is not
+                                    resurrected. Off by default — turn it on to recover after losing ratings.json.
+                                </div>
+                            </div>
+
                             <div class="inputContainer" style="margin-top: 8px;">
                                 <button id="btnBackfillNativeRatings" type="button" is="emby-button" class="raised block">
                                     <span>Sync existing ratings to Jellyfin now</span>
@@ -2804,6 +2829,8 @@
                     document.querySelector('#chkShowCardRatingOverlay').checked = config.ShowCardRatingOverlay !== false;
                     document.querySelector('#chkWriteRatingsToJellyfin').checked = config.WriteRatingsToJellyfin !== false;
                     document.querySelector('#chkWriteAverageToCommunityRating').checked = config.WriteAverageToCommunityRating === true;
+                    document.querySelector('#chkMirrorRatingsToNfo').checked = config.MirrorRatingsToNfo !== false;
+                    document.querySelector('#chkImportRatingsFromNfo').checked = config.ImportRatingsFromNfo === true;
 
                     // One-time "sync existing ratings to Jellyfin" backfill button.
                     var backfillBtn = document.getElementById('btnBackfillNativeRatings');
@@ -3188,6 +3215,8 @@
                     config.ShowCardRatingOverlay = document.querySelector('#chkShowCardRatingOverlay').checked;
                     config.WriteRatingsToJellyfin = document.querySelector('#chkWriteRatingsToJellyfin').checked;
                     config.WriteAverageToCommunityRating = document.querySelector('#chkWriteAverageToCommunityRating').checked;
+                    config.MirrorRatingsToNfo = document.querySelector('#chkMirrorRatingsToNfo').checked;
+                    config.ImportRatingsFromNfo = document.querySelector('#chkImportRatingsFromNfo').checked;
                     config.MinRating = parseInt(document.querySelector('#txtMinRating').value);
                     config.MaxRating = parseInt(document.querySelector('#txtMaxRating').value);
                     config.EnableNetflixView = document.querySelector('#chkEnableNetflixView').checked;

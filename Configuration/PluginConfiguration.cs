@@ -213,6 +213,24 @@ namespace Jellyfin.Plugin.Ratings.Configuration
         public bool WriteAverageToCommunityRating { get; set; }
 
         /// <summary>
+        /// Gets or sets a value indicating whether every rating and review is also mirrored into the
+        /// rated item's .nfo as an inert &lt;pluginratings&gt; element, so the plugin's data is backed
+        /// up next to the media and survives losing ratings.json. Jellyfin ignores the element (its NFO
+        /// reader skips elements it does not know) and never rewrites the file, because no NFO metadata
+        /// saver is enabled. Runs from the scheduled task "Mirror ratings and reviews into NFOs".
+        /// Default true.
+        /// </summary>
+        public bool MirrorRatingsToNfo { get; set; } = true;
+
+        /// <summary>
+        /// Gets or sets a value indicating whether the mirrored element is ALSO read back: ratings and
+        /// reviews that only exist in an .nfo are restored into the plugin. It only ever adds - a rating
+        /// deleted in the UI is not resurrected from the backup. Off by default, so the plugin store
+        /// stays the single source of truth unless a recovery is wanted.
+        /// </summary>
+        public bool ImportRatingsFromNfo { get; set; }
+
+        /// <summary>
         /// Gets or sets the maximum rating value.
         /// </summary>
         public int MaxRating { get; set; }
