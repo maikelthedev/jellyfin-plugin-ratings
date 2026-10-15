@@ -118,22 +118,15 @@ namespace Jellyfin.Plugin.Ratings
 
             var all = _repository.GetAllRatings() ?? new List<Models.UserRating>();
             var groups = all.GroupBy(r => r.ItemId).ToList();
-            var backups = Path.Combine(_appPaths.DataPath, "ratings", "nfo-backups",
-                DateTime.UtcNow.ToString("yyyyMMdd", CultureInfo.InvariantCulture));
-            var written = 0;
-            var unchanged = 0;
-            var noNfo = 0;
-            var noItem = 0;
-            var failed = 0;
-            var restored = 0;
-            var done = 0;
 
+            // Group by the NFO the ratings belong to, NOT by item: a series' tvshow.nfo carries the
+            // series' own ratings AND its seasons' (a season has no NFO of its own, so both map to the
+            // series file), and the block is a single element per file.
+            var byNfo = new Dictionary<string, List<Models.UserRating>>(StringComparer.Ordinal);
+            var noItem = 0;
+            var noNfo = 0;
             foreach (var group in groups)
             {
-                cancellationToken.ThrowIfCancellationRequested();
-                done++;
-                progress?.Report(done * 100.0 / Math.Max(groups.Count, 1));
-
                 var item = _libraryManager.GetItemById(group.Key);
                 if (item is null)
                 {
@@ -144,16 +137,38 @@ namespace Jellyfin.Plugin.Ratings
                 var nfoPath = NfoPathFor(item);
                 if (nfoPath is null || !File.Exists(nfoPath))
                 {
-                    // No NFO to carry the block: a missing series NFO is Jellyfin's own business, and
-                    // creating one here would mean inventing metadata. Counted and reported instead.
+                    // No NFO to carry the block: a missing NFO is Jellyfin's own business, and creating
+                    // one here would mean inventing metadata. Counted and reported instead.
                     noNfo++;
                     continue;
                 }
 
+                if (!byNfo.TryGetValue(nfoPath, out var list))
+                {
+                    byNfo[nfoPath] = list = new List<Models.UserRating>();
+                }
+
+                list.AddRange(group);
+            }
+
+            var backups = Path.Combine(_appPaths.DataPath, "ratings", "nfo-backups",
+                DateTime.UtcNow.ToString("yyyyMMdd", CultureInfo.InvariantCulture));
+            var written = 0;
+            var unchanged = 0;
+            var failed = 0;
+            var restored = 0;
+            var done = 0;
+
+            foreach (var (nfoPath, ratings) in byNfo)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                done++;
+                progress?.Report(done * 100.0 / Math.Max(byNfo.Count, 1));
+
                 try
                 {
                     var existing = File.ReadAllText(nfoPath);
-                    var block = NfoMirror.BuildBlock("k3ntas", DateTime.UtcNow, group);
+                    var block = NfoMirror.BuildBlock("k3ntas", DateTime.UtcNow, ratings);
                     var merged = NfoMirror.Merge(existing, block);
                     if (string.Equals(merged, existing, StringComparison.Ordinal))
                     {
@@ -181,9 +196,10 @@ namespace Jellyfin.Plugin.Ratings
             }
 
             _logger.LogInformation(
-                "NFO mirror: {Groups} items ({Ratings} ratings) — {Written} written, {Unchanged} unchanged, "
-                + "{NoNfo} without an NFO, {NoItem} not in the library, {Failed} failed, {Restored} restored",
-                groups.Count, all.Count, written, unchanged, noNfo, noItem, failed, restored);
+                "NFO mirror: {Ratings} ratings on {Groups} items -> {Files} NFOs — {Written} written, "
+                + "{Unchanged} unchanged, {NoNfo} without an NFO, {NoItem} not in the library, "
+                + "{Failed} failed, {Restored} restored",
+                all.Count, groups.Count, byNfo.Count, written, unchanged, noNfo, noItem, failed, restored);
             progress?.Report(100);
         }
 
@@ -219,8 +235,9 @@ namespace Jellyfin.Plugin.Ratings
         }
 
         /// <summary>
-        /// The NFO that belongs to an item: <c>tvshow.nfo</c> inside a series folder, otherwise the
-        /// media filename with an .nfo extension.
+        /// The NFO that belongs to an item: the series' <c>tvshow.nfo</c> for a series or one of its
+        /// seasons (a season folder has no NFO of its own), otherwise the media filename with an .nfo
+        /// extension.
         /// </summary>
         /// <param name="item">The item.</param>
         /// <returns>The path, or null when the item has no usable path.</returns>
@@ -232,7 +249,13 @@ namespace Jellyfin.Plugin.Ratings
                 return null;
             }
 
-            return item is Series || item is Season
+            if (item is Season)
+            {
+                var parent = Directory.GetParent(path!.TrimEnd('/'));
+                return parent is null ? null : Path.Combine(parent.FullName, "tvshow.nfo");
+            }
+
+            return item is Series
                 ? Path.Combine(path!, "tvshow.nfo")
                 : Path.ChangeExtension(path!, ".nfo");
         }
